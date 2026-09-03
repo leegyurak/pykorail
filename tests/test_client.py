@@ -56,26 +56,59 @@ class TestLogin:
         client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": LOGIN_OK})
 
         # when
-        succeeded = client.login("me@example.com", "pw")
+        client.login("me@example.com", "pw")
 
         # then
-        assert succeeded is True
         assert client.logined
         assert client.membership_number == "1234567890"
         assert client.name == "홍길동"
         assert client.email == "me@example.com"
         assert client.phone_number == "010-1234-5678"
 
-    def test_failed_login_returns_false(self, make_korail) -> None:
+    def test_rejected_credentials_raise(self, make_korail) -> None:
+        """반환값으로 알려 주면 확인하지 않은 호출자가 로그인 없이 진행합니다."""
+        # given
+        client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": LOGIN_FAIL})
+
+        # when & then
+        with pytest.raises(LoginFailedError):
+            client.login("me@example.com", "pw")
+
+    def test_rejected_login_leaves_the_account_empty(self, make_korail) -> None:
         # given
         client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": LOGIN_FAIL})
 
         # when
-        succeeded = client.login("me@example.com", "pw")
+        with pytest.raises(LoginFailedError):
+            client.login("me@example.com", "pw")
 
         # then
-        assert succeeded is False
         assert not client.logined
+        assert client.membership_number is None
+
+    def test_server_reason_is_carried(self, make_korail) -> None:
+        """비밀번호 오류와 휴면 계정은 사용자가 해야 할 일이 다릅니다 — 뭉개면 안 됩니다."""
+        # given
+        client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": LOGIN_FAIL})
+
+        # when
+        with pytest.raises(LoginFailedError) as exc:
+            client.login("me@example.com", "pw")
+
+        # then
+        assert exc.value.msg == "비밀번호가 틀렸습니다"
+        assert exc.value.code == "WRC000000"
+
+    def test_falls_back_when_the_server_gives_no_reason(self, make_korail) -> None:
+        # given
+        client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": {"strResult": "FAIL"}})
+
+        # when
+        with pytest.raises(LoginFailedError) as exc:
+            client.login("me@example.com", "pw")
+
+        # then
+        assert exc.value.msg == "아이디 또는 비밀번호가 올바르지 않습니다"
 
     @pytest.mark.parametrize(
         ("korail_id", "expected_flag"),
@@ -175,10 +208,10 @@ class TestHyphenlessPhoneGuard:
         client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": LOGIN_OK})
 
         # when
-        succeeded = client.login(korail_id, "pw")
+        client.login(korail_id, "pw")
 
         # then
-        assert succeeded is True
+        assert client.logined
 
 
 class TestLoggedInFactory:
@@ -227,10 +260,10 @@ class TestLifecycle:
         client.logout()
 
         # when
-        succeeded = client.login("me@example.com", "pw")
+        client.login("me@example.com", "pw")
 
         # then
-        assert succeeded is True
+        assert client.logined
 
     def test_context_manager_closes_session(self, make_korail) -> None:
         # given
