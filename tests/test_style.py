@@ -35,12 +35,36 @@ BANNED = (ast.If, ast.For, ast.While, ast.AsyncFor)
 
 # encoding 검사는 패키지 코드에도 걸립니다. _version.py 는 hatch-vcs 가 빌드 때
 # 만들어내는 파일이라 우리가 고칠 수 없어 제외합니다.
+# 양쪽 다 rglob 입니다 — 한쪽만 glob 이면 하위 디렉터리가 생겼을 때 조용히 빠집니다.
 SOURCE_FILES = sorted(
-    path for path in [*(ROOT / "src" / "pykorail").rglob("*.py"), *TESTS_DIR.glob("*.py")] if path.name != "_version.py"
+    path
+    for path in [*(ROOT / "src" / "pykorail").rglob("*.py"), *TESTS_DIR.rglob("*.py")]
+    if path.name != "_version.py"
 )
 
 # 텍스트를 다루는 호출만 봅니다. read_bytes/write_bytes 는 인코딩이 없습니다.
+#
+# 한계: 이름만 보고 매칭하므로 `gzip.open` 처럼 시그니처가 다른 동명 호출도 걸립니다
+# (지금 이 저장소엔 없습니다). 반대로 `subprocess(text=True)` 나 `tempfile` 처럼
+# 이름이 다른 텍스트 I/O 는 못 잡습니다. import 를 추적하지 않는 대신 단순함을
+# 택한 것이고, 오탐이 나면 여기 목록이나 _has_encoding 을 손보세요.
 TEXT_IO_CALLS = frozenset({"open", "read_text", "write_text"})
+
+# encoding 을 **위치 인자**로 넘길 수 있는 자리. (호출 이름, 어트리뷰트 호출인가)
+#   open(file, mode, buffering, encoding)        → 3
+#   Path(p).open(mode, buffering, encoding)      → 2
+#   Path(p).read_text(encoding, errors)          → 0
+#   Path(p).write_text(data, encoding, errors)   → 1
+ENCODING_POSITION = {
+    ("open", False): 3,
+    ("open", True): 2,
+    ("read_text", True): 0,
+    ("write_text", True): 1,
+}
+
+# 파일 모드 문자열에만 쓰이는 글자들. 파일 이름이 모드로 오인되는 것을 막습니다
+# ("backup.txt" 는 '.' 때문에 걸러집니다).
+MODE_CHARS = frozenset("rwxab+t")
 
 GIVEN = re.compile(r"^\s*#\s*given\b", re.I)
 WHEN = re.compile(r"^\s*#.*\bwhen\b", re.I)
@@ -68,10 +92,24 @@ def _call_name(node: ast.Call) -> str:
 
 
 def _is_binary(node: ast.Call) -> bool:
-    """``open(p, "rb")`` 처럼 바이너리 모드면 encoding 을 줄 수 없습니다."""
-    positional = [arg.value for arg in node.args[1:2] if isinstance(arg, ast.Constant)]
+    """``open(p, "rb")`` 처럼 바이너리 모드면 encoding 을 줄 수 없습니다.
+
+    모드가 몇 번째 위치 인자인지는 호출 형태에 따라 다릅니다 — ``open(p, "rb")`` 는
+    두 번째, ``Path(p).open("rb")`` 는 첫 번째입니다. 자리를 세는 대신 **모드처럼
+    생긴 문자열이 있는지** 봅니다. 여기서 놓치면 "바이너리인데 encoding 을 붙여라"
+    라고 시키게 되고, 그대로 따르면 :class:`ValueError` 로 죽습니다.
+    """
+    positional = [arg.value for arg in node.args if isinstance(arg, ast.Constant)]
     keyword = [kw.value.value for kw in node.keywords if kw.arg == "mode" and isinstance(kw.value, ast.Constant)]
-    return any("b" in mode for mode in positional + keyword if isinstance(mode, str))
+    modes = [value for value in positional + keyword if isinstance(value, str)]
+    return any("b" in mode and set(mode) <= MODE_CHARS for mode in modes)
+
+
+def _has_encoding(node: ast.Call) -> bool:
+    """``encoding`` 을 키워드로든 위치 인자로든 넘겼는지."""
+    position = ENCODING_POSITION.get((_call_name(node), isinstance(node.func, ast.Attribute)))
+    keyword = any(kw.arg == "encoding" for kw in node.keywords)
+    return keyword or (position is not None and len(node.args) > position)
 
 
 def encoding_violations(path: Path) -> list[str]:
@@ -87,11 +125,7 @@ def encoding_violations(path: Path) -> list[str]:
         for node in ast.walk(tree)
         if isinstance(node, ast.Call) and _call_name(node) in TEXT_IO_CALLS and not _is_binary(node)
     ]
-    return [
-        f"{path.name}:{node.lineno} {_call_name(node)}()"
-        for node in calls
-        if not any(kw.arg == "encoding" for kw in node.keywords)
-    ]
+    return [f"{path.name}:{node.lineno} {_call_name(node)}()" for node in calls if not _has_encoding(node)]
 
 
 def gwt_violations(path: Path) -> list[str]:
@@ -239,6 +273,14 @@ class TestCheckersActuallyWork:
             ("open('x', 'rb')\n", []),  # 바이너리는 인코딩이 없습니다
             ("open('x', mode='rb')\n", []),
             ("from pathlib import Path\n\nPath('x').read_bytes()\n", []),
+            # 아래 세 개는 리뷰에서 오탐으로 지적된 것들입니다. 잡히면 회귀입니다.
+            ("from pathlib import Path\n\nPath('x').open('rb')\n", []),
+            ("from pathlib import Path\n\nPath('x').open('w', encoding='utf-8')\n", []),
+            ("from pathlib import Path\n\nPath('x').read_text('utf-8')\n", []),
+            ("from pathlib import Path\n\nPath('x').write_text('한글', 'utf-8')\n", []),
+            ("open('x', 'w', -1, 'utf-8')\n", []),
+            # 파일 이름이 모드로 오인되면 안 됩니다.
+            ("open('backup.txt')\n", ["s.py:1 open()"]),
         ],
         # pytest 가 비 ASCII id 를 \uXXXX 로 이스케이프해 출력이 읽기 나빠집니다.
         ids=[
@@ -250,6 +292,12 @@ class TestCheckersActuallyWork:
             "open-binary-positional",
             "open-binary-keyword",
             "read_bytes-not-applicable",
+            "path-open-binary",
+            "path-open-with-encoding",
+            "read_text-positional-encoding",
+            "write_text-positional-encoding",
+            "open-positional-encoding",
+            "filename-is-not-a-mode",
         ],
     )
     def test_encoding_checker(self, tmp_path: Path, source: str, expected: list[str]) -> None:
@@ -272,10 +320,14 @@ def test_every_test_file_is_checked() -> None:
     assert count >= 10
 
 
-def test_encoding_check_covers_the_package_too() -> None:
-    """테스트만 검사하고 src 를 빠뜨리면 이 규약은 반쪽입니다."""
+@pytest.mark.parametrize("subdir", ["src/pykorail", "tests"])
+def test_encoding_check_covers_every_file(subdir: str) -> None:
+    """한쪽을 통째로 빠뜨리는 것뿐 아니라 파일 하나가 새는 것도 잡습니다."""
+    # given
+    on_disk = {path for path in (ROOT / subdir).rglob("*.py") if path.name != "_version.py"}
+
     # when
-    package_files = [path for path in SOURCE_FILES if "src" in path.parts]
+    missing = on_disk - set(SOURCE_FILES)
 
     # then
-    assert len(package_files) >= 20
+    assert missing == set()
