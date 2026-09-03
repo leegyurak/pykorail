@@ -654,6 +654,8 @@ class TestTickets:
 
         # then
         assert (fee.fee, fee.amount, fee.usable_mileage) == (5600, 53400, 1200)
+        assert fee.refundable is True
+        assert fee.period_code == "21"
 
     def test_refund_fee_is_refundable_only_on_y(self, make_korail) -> None:
         # given
