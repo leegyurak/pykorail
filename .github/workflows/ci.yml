@@ -181,7 +181,7 @@ jobs:
 
       - name: Trivy 스캔 (게이트)
         # HIGH·CRITICAL 이 하나라도 있으면 여기서 실패합니다.
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -196,7 +196,7 @@ jobs:
 
       - name: Trivy 스캔 (SARIF 생성)
         if: always()
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .

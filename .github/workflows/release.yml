@@ -133,7 +133,7 @@ jobs:
 
       - name: Trivy 스캔
         # 취약한 의존성을 그대로 PyPI 에 올리지 않도록 릴리스에서도 게이트합니다.
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .

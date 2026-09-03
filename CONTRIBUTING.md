@@ -318,11 +318,23 @@ PR 을 열면 자동으로 돕니다 — 린트 · 타입 검사 · Python 3.10�
 - 상태 체크 `ci-ok` 통과 필수 (최신 main 기준)
 - main 삭제·강제푸시 금지
 
+적용 후 확인:
+
+```bash
+gh api repos/leegyurak/pykorail/rulesets --jq '.[] | "\(.id) \(.name) \(.enforcement)"'
+git push origin main   # 거부되면 정상
+```
+
 > [!NOTE]
-> 저장소 admin 은 PR 규칙을 우회할 수 있게 열어 뒀습니다. GitHub 은 자기 PR 을
-> 스스로 승인할 수 없어서, 1인 저장소에서는 이 예외가 없으면 아무것도 머지하지
-> 못합니다. 본인 PR 도 예외 없이 막으려면 `main-protection.json` 의
-> `bypass_actors` 를 `[]` 로 바꾸고 스크립트를 다시 실행하세요.
+> **admin 도 main 에 직접 push 할 수 없습니다.** `bypass_actors` 의
+> `bypass_mode` 가 `pull_request` 라서, 우회는 "PR 안에서 승인 요건을 건너뛰는 것"
+> 까지만 허용되고 직접 push 는 여전히 막힙니다.
+>
+> 이 우회를 둔 이유는 GitHub 이 **자기 PR 을 스스로 승인하는 것을 금지**하기
+> 때문입니다 — 1인 저장소에서 예외가 없으면 아무것도 머지하지 못합니다.
+>
+> - 본인 PR 도 예외 없이 막으려면 → `bypass_actors` 를 `[]` 로
+> - 긴급 시 직접 push 도 허용하려면 → `bypass_mode` 를 `"always"` 로
 
 ---
 
