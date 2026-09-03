@@ -347,7 +347,7 @@ def test_every_test_file_is_checked() -> None:
     새도 좌우가 어긋납니다. ``>= 10`` 은 두 변이 함께 비는 경우 때문에 남깁니다.
     """
     # when
-    from_source = {path for path in SOURCE_FILES if "tests" in path.parts and path.name.startswith("test_")}
+    from_source = {path for path in SOURCE_FILES if path.is_relative_to(TESTS_DIR) and path.name.startswith("test_")}
 
     # then
     assert len(TEST_FILES) >= 10, "패턴이 오타면 두 변이 같이 비어 동치 비교는 통과합니다"
