@@ -277,10 +277,14 @@ def test_individual_by_default(self) -> None:
 `ADD:` 새로 넣음 · `FIX:` 버그 수정 · `REF:` 구조 리팩터링(동작 그대로) ·
 `DEL:` 제거 · `DOCS:` 문서만 · `UPT:` 의존 패키지 버전 업데이트
 
+`ADD:`·`DEL:` 은 **코드와 의존성**에 대한 것입니다. 문서와 에이전트 설정
+(`.claude/` · `.agents/` · `.cursor/` · `.opencode/`)은 추가·수정·삭제 모두
+`DOCS:` 입니다. `.github/workflows/` 는 실행되므로 코드로 봅니다.
+
 브랜치는 `<접두사 소문자>/<요약-kebab>` (`fix/midnight-arrival`).
 
 경계가 헷갈리는 경우, 릴리스 노트 라벨 대응, 커밋 전 점검 목록은 **`commit`
-스킬**(`.agents/skills/commit/SKILL.md`)에 있습니다. 커밋하거나 PR 을 열기 전에
+스킬**(`.claude/skills/commit/SKILL.md`)에 있습니다. 커밋하거나 PR 을 열기 전에
 읽으세요.
 
 ### 하지 말 것

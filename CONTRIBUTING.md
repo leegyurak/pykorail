@@ -249,9 +249,12 @@ APK: com.korail.talk versionName 7.0.1 (2026-08 추출)
 - **코레일이 API 를 바꿔 대응한 것은 `FIX:`** 입니다 (`external-api` 라벨도 함께).
 - **의존성을 새로 넣으면 `ADD:`, 버전만 올리면 `UPT:`**.
 
-나머지 경계(테스트만 추가했을 때, 문서와 코드를 같이 고쳤을 때, CI 설정을 바꿨을 때)
-와 커밋 전 점검 목록은 [`.claude/skills/commit/SKILL.md`](.claude/skills/commit/SKILL.md)
-에 있습니다. 코딩 에이전트를 쓰신다면 그 파일을 자동으로 읽습니다.
+문서·에이전트 설정은 **추가해도 `DOCS:`** 입니다 — `ADD:`·`DEL:` 은 코드와 의존성에
+대한 것입니다. (`.github/workflows/` 는 실행되므로 코드로 봅니다.)
+
+나머지 경계와 커밋 전 점검 목록은
+[`.claude/skills/commit/SKILL.md`](.claude/skills/commit/SKILL.md) 에 있습니다.
+코딩 에이전트를 쓰신다면 커밋할 때 이 스킬을 열어 보게 돼 있습니다.
 
 ### 2. 브랜치
 
