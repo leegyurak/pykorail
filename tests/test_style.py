@@ -335,19 +335,23 @@ class TestCheckersActuallyWork:
 
 
 def test_every_test_file_is_checked() -> None:
-    """패턴이 통째로 빗나가는 것과, 두 목록이 어긋나는 것을 함께 잡습니다.
+    """33번 줄 글롭이 통째로 빗나가는 것도, 좁아지거나 넓어지는 것도 잡습니다.
 
     ``TESTS_DIR.rglob("test_*.py")`` 로 다시 훑어 대조하는 형태는 :data:`TEST_FILES`
-    와 **같은 식**이라 항상 참이 됩니다 — 검증력이 없습니다. 여기서 의미 있는 축은
-    두 가지뿐입니다: 패턴이 무언가를 잡았는가, 그리고 :data:`SOURCE_FILES` 와
-    어긋나지 않는가(글롭도 필터도 달라 독립적입니다).
+    와 **같은 식**이라 항상 참입니다 — 검증력이 없습니다. 한쪽 차집합
+    (``TEST_FILES - SOURCE_FILES``)도 부족합니다: :data:`TEST_FILES` 는 늘
+    :data:`SOURCE_FILES` 의 부분집합이라 글롭이 **좁아지면** 조용히 통과합니다.
+
+    그래서 :data:`SOURCE_FILES` 쪽에서 같은 집합을 다시 만들어 **양방향으로**
+    비교합니다. 저쪽은 ``*.py`` 로 훑으므로 ``test_*.py`` 와 독립이고, 한 개만
+    새도 좌우가 어긋납니다. ``>= 10`` 은 두 변이 함께 비는 경우 때문에 남깁니다.
     """
     # when
-    escaped = set(TEST_FILES) - set(SOURCE_FILES)
+    from_source = {path for path in SOURCE_FILES if "tests" in path.parts and path.name.startswith("test_")}
 
     # then
-    assert len(TEST_FILES) >= 10, "패턴이 오타면 목록이 통째로 비어도 집합 대조는 통과합니다"
-    assert escaped == set(), "TEST_FILES 에만 있고 SOURCE_FILES 에는 없는 파일"
+    assert len(TEST_FILES) >= 10, "패턴이 오타면 두 변이 같이 비어 동치 비교는 통과합니다"
+    assert set(TEST_FILES) == from_source, "33번 줄 글롭이 좁아지거나 넓어졌습니다"
 
 
 @pytest.mark.parametrize("subdir", ["src/pykorail", "tests"])
