@@ -245,6 +245,11 @@ def test_individual_by_default(self) -> None:
   빌드·설치 확인, Trivy 스캔. **전부 우분투에서만 돕니다** — `src/` 에 플랫폼 분기가
   없고, Windows 러너가 실제로 잡아주던 인코딩 기본값 문제는 `tests/test_style.py`
   의 `test_text_io_declares_encoding` 이 AST 로 대신합니다.
+- **CodeRabbit 리뷰** (`.coderabbit.yaml`) — main 으로 가는 PR 에 리뷰 코멘트를
+  답니다. GitHub App 이라 워크플로가 아니고, **필수 체크가 아닙니다**
+  (`request_changes_workflow: false`). 설정에 경로별 리뷰 지침이 들어 있고,
+  `knowledge_base.code_guidelines` 로 이 파일과 `CONTRIBUTING.md`·스킬을 리뷰
+  기준으로 읽습니다 — **규범을 고치면 리뷰 기준도 함께 바뀝니다.**
 - **Release** (`.github/workflows/release.yml`) — `v*` 태그에서 동작. 태그와 패키지
   버전을 대조하고, 전 버전 게이트를 다시 돌린 뒤 PyPI(Trusted Publishing)에 올리고
   릴리스 노트를 자동 생성합니다.
