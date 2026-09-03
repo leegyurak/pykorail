@@ -487,6 +487,9 @@ class TestReservations:
         # then
         assert found is not None
         assert session.urls().count(API_ENDPOINTS["myreservationlist"]) == 1
+        assert session.kwargs_for("myreservationlist")["params"]["hidPnrNo"] == "1234567890", (
+            "횟수만 세면 엉뚱한 예약의 좌석을 1회 조회해도 통과합니다"
+        )
 
     def test_create_does_not_walk_every_reservation(self, make_korail) -> None:
         """예매 한 번에 남의 예약 좌석까지 긁어 오면 계정 제재로 가는 길입니다."""
@@ -495,10 +498,12 @@ class TestReservations:
         train = client.trains.search("서울", "부산")[0]
 
         # when
-        client.reservations.create(train)
+        reservation = client.reservations.create(train)
 
         # then
+        assert reservation.rsv_id == "1234567890"
         assert session.urls().count(API_ENDPOINTS["myreservationlist"]) == 1
+        assert session.kwargs_for("myreservationlist")["params"]["hidPnrNo"] == "1234567890"
         assert len(session.calls) == 5, "역 마스터 · 조회 · 예매 · 예약목록 · 좌석 각 1회"
 
     def test_all_still_fills_every_reservation(self, make_korail) -> None:

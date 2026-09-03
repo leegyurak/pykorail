@@ -118,7 +118,7 @@ trains = korail.trains.search("서울", "부산", include_waiting_list=True)
 | 메서드 | 반환 | 설명 |
 | --- | --- | --- |
 | `all()` | `list[Reservation]` | 결제 전 예약 전체. 좌석 상세까지 채워 옵니다. |
-| `find(rsv_id)` | `Reservation \| None` | 예약번호로 하나. 요청 **2회** — 일치하는 예약의 좌석만 조회합니다. |
+| `find(rsv_id)` | `Reservation \| None` | 예약번호로 하나. 찾으면 요청 **2회**(목록 + 그 예약의 좌석), 목록에 없으면 1회, `rsv_id` 가 비어 있으면 0회. |
 | `create(train, passengers=None, option=GENERAL_FIRST)` | `Reservation` | 예매. 좌석이 없고 예약대기가 열려 있으면 대기를 겁니다. |
 | `seats(rsv_id)` | `tuple[list[Seat], str \| None]` | 좌석 상세와 발매창구 번호. |
 | `pay(reservation, card)` | `None` | 카드 결제. |
@@ -127,7 +127,8 @@ trains = korail.trains.search("서울", "부산", include_waiting_list=True)
 > [!IMPORTANT]
 > `all()` 은 예약 하나마다 좌석 상세를 추가 조회합니다. 예약이 N개면 요청이 N+1회
 > 나가니, 반복문 안에서 부르지 말고 한 번 받아 재사용하세요.
-> **예약 하나만 필요하면 `find()`** 를 쓰세요 — 목록 1회 + 그 예약의 좌석 1회로 끝납니다.
+> **예약 하나만 필요하면 `find()`** 를 쓰세요 — 일치하는 예약이 있으면 목록 1회 + 그 예약의
+> 좌석 1회로 끝나고, 없으면 목록 조회 1회에서 멈춥니다.
 
 `create()` 는 예매 직후 예약을 다시 조회해 돌려줍니다 — 반환된 `Reservation` 은
 `seats` 와 `wct_no` 가 채워져 있어 바로 `pay()` 에 넘길 수 있습니다.
