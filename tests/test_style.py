@@ -293,7 +293,7 @@ class TestCheckersActuallyWork:
             ("open('x', 'rb')\n", []),  # 바이너리는 인코딩이 없습니다
             ("open('x', mode='rb')\n", []),
             ("from pathlib import Path\n\nPath('x').read_bytes()\n", []),
-            # 아래 세 개는 리뷰에서 오탐으로 지적된 것들입니다. 잡히면 회귀입니다.
+            # 아래는 리뷰에서 오탐으로 지적된 것들입니다. 잡히면 회귀입니다.
             ("from pathlib import Path\n\nPath('x').open('rb')\n", []),
             ("from pathlib import Path\n\nPath('x').open('w', encoding='utf-8')\n", []),
             ("from pathlib import Path\n\nPath('x').read_text('utf-8')\n", []),
@@ -335,15 +335,19 @@ class TestCheckersActuallyWork:
 
 
 def test_every_test_file_is_checked() -> None:
-    """개수 하한이 아니라 실제 파일 집합과 대조합니다 — 아래 encoding 쪽과 같은 형태로."""
-    # given
-    on_disk = set(TESTS_DIR.rglob("test_*.py"))
+    """패턴이 통째로 빗나가는 것과, 두 목록이 어긋나는 것을 함께 잡습니다.
 
+    ``TESTS_DIR.rglob("test_*.py")`` 로 다시 훑어 대조하는 형태는 :data:`TEST_FILES`
+    와 **같은 식**이라 항상 참이 됩니다 — 검증력이 없습니다. 여기서 의미 있는 축은
+    두 가지뿐입니다: 패턴이 무언가를 잡았는가, 그리고 :data:`SOURCE_FILES` 와
+    어긋나지 않는가(글롭도 필터도 달라 독립적입니다).
+    """
     # when
-    missing = on_disk - set(TEST_FILES)
+    escaped = set(TEST_FILES) - set(SOURCE_FILES)
 
     # then
-    assert missing == set()
+    assert len(TEST_FILES) >= 10, "패턴이 오타면 목록이 통째로 비어도 집합 대조는 통과합니다"
+    assert escaped == set(), "TEST_FILES 에만 있고 SOURCE_FILES 에는 없는 파일"
 
 
 @pytest.mark.parametrize("subdir", ["src/pykorail", "tests"])
