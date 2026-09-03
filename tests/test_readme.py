@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+from itertools import accumulate
 from pathlib import Path
 from typing import Any
 
@@ -203,6 +204,20 @@ class TestFacts:
         assert "discount_type=None" in REFERENCE
 
 
+def _visible_lines(text: str) -> list[str]:
+    """``<details>`` 로 접히지 않아 처음부터 보이는 줄만 남깁니다.
+
+    이 파일에도 제어 흐름 금지 규칙이 적용되므로 루프 대신 누적합을 씁니다.
+    """
+    lines = text.splitlines()
+    opens = [line.count("<details") for line in lines]
+    closes = [line.count("</details>") for line in lines]
+    # 각 줄에 **진입하기 직전**의 중첩 깊이
+    depth_before = [0, *accumulate(o - c for o, c in zip(opens, closes, strict=True))][:-1]
+    trio = zip(lines, depth_before, opens, strict=True)
+    return [line for line, depth, opened in trio if depth == 0 and not opened]
+
+
 class TestReadmeShape:
     """README 는 "처음 보는 사람" 용입니다 — 길어지면 레퍼런스로 보내세요."""
 
@@ -211,12 +226,16 @@ class TestReadmeShape:
         assert "docs/reference.md" in README
 
     def test_stays_short(self) -> None:
-        """레퍼런스가 다시 README 로 새어 들어오는 것을 막습니다."""
+        """레퍼런스가 다시 README 로 새어 들어오는 것을 막습니다.
+
+        접힌 ``<details>`` 안쪽은 읽는 사람에게 비용이 없으므로 세지 않습니다 —
+        전체 줄 수보다 **펼쳐진 채 보이는 분량**이 실제 부담입니다.
+        """
         # when
-        length = len(README.splitlines())
+        visible = _visible_lines(README)
 
         # then
-        assert length < 260, "레퍼런스성 내용은 docs/reference.md 로 옮기세요"
+        assert len(visible) < 200, "레퍼런스성 내용은 docs/reference.md 로 옮기세요"
 
     def test_shows_install_and_usage_early(self) -> None:
         """설치와 첫 예제가 첫 화면 안에 있어야 합니다."""
