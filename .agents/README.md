@@ -9,17 +9,19 @@
 | **Codex** | `AGENTS.md` + `.agents/skills/`<sup>※</sup> | 문서상 cwd 에서 저장소 루트까지 거슬러 올라가며 `.agents/skills` 를 스캔합니다 |
 | **Claude Code** | `CLAUDE.md` → `@AGENTS.md` + `.claude/skills/` | `.claude/agents/` 서브에이전트. **이 저장소에서 실제로 확인된 유일한 조합입니다.** |
 | **Pi** | `AGENTS.md` + `.agents/skills/`<sup>※</sup> | |
-| **Cursor** | `.cursor/rules/*.mdc` (+ 스킬<sup>※</sup>) | 글롭 범위별 규칙 4개 (아래 참조) |
+| **Cursor** | `AGENTS.md` + `.cursor/rules/*.mdc` (+ 스킬<sup>※</sup>) | Cursor 문서가 `AGENTS.md` 를 4대 규칙 유형 중 하나로 명시합니다. `.mdc` 는 글롭 범위별 강조용 3개 |
 | **OpenCode** | `AGENTS.md` + `.opencode/agents/` (+ 스킬<sup>※</sup>) | 서브에이전트는 OpenCode 프론트매터 스키마 |
 
 <sup>※</sup> **미검증.** `SKILL.md` 는 2025-12 에 공개된 열린 표준이고 표준 문서상
 Codex · Cursor · OpenCode · Gemini CLI 등이 같은 형식을 읽습니다. 다만 **이
-저장소에서 Claude Code 외의 도구로 실제 로드를 확인한 적은 없습니다.** 표준을
-믿고 스킬 하나만 두되, 특정 도구에서 반드시 적용돼야 하는 규칙이라면 그 도구의
-전용 진입점(예: Cursor 의 `.cursor/rules/`)에도 두세요.
+저장소에서 Claude Code 외의 도구로 실제 로드를 확인한 적은 없습니다.**
 
-그래서 도구별로 스킬을 복제하지는 않습니다. 복제가 필요한 것은 프론트매터 스키마가
-다른 `.opencode/agents/` 의 서브에이전트와, 자체 포맷인 `.cursor/rules/` 뿐입니다.
+그래도 **스킬을 도구별로 복제하지는 않습니다.** 규범의 본체는 `AGENTS.md` 에 있고
+그건 다섯 도구가 전부 읽으므로, 어떤 도구가 스킬을 못 열더라도 최소한의 규약은
+전달됩니다. 스킬은 그 위의 상세 절차입니다.
+
+복제가 필요한 것은 프론트매터 스키마가 다른 `.opencode/agents/` 의 서브에이전트
+하나뿐입니다.
 
 ## 파일 배치
 
@@ -36,7 +38,7 @@ CLAUDE.md                       ← @AGENTS.md 임포트 + Claude 전용 안내
     ├── verify/SKILL.md
     ├── add-endpoint/SKILL.md
     ├── add-error-code/SKILL.md
-    └── commit/SKILL.md          ← Cursor 용 사본이 .cursor/rules/commit.mdc 에도
+    └── commit/SKILL.md
 
 .agents/
 ├── README.md                   ← 이 파일
@@ -49,7 +51,6 @@ CLAUDE.md                       ← @AGENTS.md 임포트 + Claude 전용 안내
 
 .cursor/rules/
 ├── architecture.mdc            ← alwaysApply: true
-├── commit.mdc                  ← alwaysApply: true
 ├── python-style.mdc            ← globs: src/**/*.py
 └── testing.mdc                 ← globs: tests/**/*.py
 ```
@@ -76,18 +77,18 @@ CLAUDE.md                       ← @AGENTS.md 임포트 + Claude 전용 안내
 
 ## 유지보수
 
-- **규칙을 바꾸려면 `AGENTS.md`.** 다섯 도구가 전부 따라옵니다 (Cursor 는
-  `.cursor/rules/` 도 함께 손봐야 합니다 — 자체 포맷이라 임포트가 안 됩니다).
+- **규칙을 바꾸려면 `AGENTS.md`.** 다섯 도구가 전부 따라옵니다. `.cursor/rules/`
+  의 세 `.mdc` 는 글롭 범위별 강조본이라, 그 범위의 규칙을 바꿨다면 함께 손보세요.
 - **서브에이전트를 바꾸면 `.claude/agents/` 와 `.opencode/agents/` 를 함께**
   고치세요. 본문은 같아야 합니다.
 - **스킬은 `.claude/skills/` 한 곳만** 고치면 됩니다 — Codex·Pi 는 `.agents/skills`
   심볼릭 링크로 같은 파일을 봅니다. 심볼릭 링크를 지원하지 않는 환경(일부 Windows
   체크아웃)에서는 그쪽 스킬 탐색만 조용히 비고 `AGENTS.md` 는 그대로 동작합니다.
-- **`AGENTS.md` 에 절을 추가하면 Cursor 도 보게 할지 판단하세요.** 글롭에 매이는
-  규칙은 기존 `.mdc` 에 넣고, 글롭과 무관하고 항상 지켜야 하는 절차(커밋 규약 등)는
-  `alwaysApply: true` 인 `.mdc` 를 새로 만듭니다. Cursor 는 `AGENTS.md` 도
-  `.claude/skills/` 도 읽지 않으므로, 복제하지 않으면 **Cursor 만 그 규칙을
-  모릅니다.**
+- **`AGENTS.md` 에 절을 추가할 때 `.cursor/rules/` 를 복제하지 마세요.** Cursor 는
+  `AGENTS.md` 를 읽습니다(공식 Rules 문서가 4대 규칙 유형 중 하나로 명시). `.mdc`
+  는 **글롭 범위별 강조**가 필요할 때만 씁니다 — `src/**` 나 `tests/**` 를 편집할
+  때만 뜨게 하고 싶은 규칙 같은 것. 글롭과 무관한 규칙을 `.mdc` 로 복제하면
+  `AGENTS.md` 와 어긋나기만 합니다.
 - **규범을 스킬로 옮길지 판단하는 기준**: 항상 알아야 하는 것(계층 규칙, 외부 API
   불변식)은 `AGENTS.md`, **특정 작업을 할 때만** 필요한 절차(커밋 쓰기, 엔드포인트
   추가)는 스킬입니다. `AGENTS.md` 는 매 세션 컨텍스트에 통째로 올라가지만 스킬은

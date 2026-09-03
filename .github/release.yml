@@ -16,10 +16,15 @@ changelog:
       labels: [breaking, breaking-change]
 
     # 아래 순서가 곧 우선순위입니다 — PR 이 여러 카테고리에 걸리면 **먼저 오는 쪽
-    # 하나에만** 들어갑니다(`*` 설명이 "이전 카테고리에 매칭되지 않은" 이라고
-    # 말하는 그 순차 매칭). 그래서 security·external-api 를 bug 앞에 둡니다.
-    # 그러지 않으면 `bug` + `external-api` 를 붙인 PR 이 🐛 에만 들어가고
-    # 🚄 는 영원히 비어 있게 됩니다.
+    # 하나에만** 들어갑니다. 추측이 아니라 확인한 사실입니다: 두 라벨을 붙인 PR 로
+    # `gh api repos/OWNER/REPO/releases/generate-notes` 를 찍어 보면 앞 카테고리에만
+    # 실립니다 (이 API 는 릴리스를 만들지 않아 안전하게 확인할 수 있습니다).
+    #
+    # 그래서 security·external-api 를 feature·bug 앞에 둡니다. 순서가 반대면
+    # `bug` + `external-api` 를 붙인 PR 이 🐛 에만 들어가고 🚄 는 영원히 비어
+    # 있게 됩니다. 부수 효과로 `feature` + `external-api` 인 새 엔드포인트 PR 도
+    # ✨ 가 아니라 🚄 로 갑니다 — 의도한 것입니다. 🚄 가 사용자에게 가장 중요한
+    # 축이라서요.
     - title: 🔐 보안
       labels: [security]
 

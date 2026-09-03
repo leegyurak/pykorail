@@ -152,12 +152,15 @@ upt/curl-cffi
 
 | 접두사 | 라벨 | 릴리스 노트 |
 | ------- | ------------------------------------------- | ----------- |
-| `ADD:`  | `feature` | ✨ 새 기능 |
+| `ADD:`  | `feature` — 단, **테스트만이면 `test`**, `.github/workflows/`·린트 설정만이면 **`ci`**, 새 의존성이면 **`dependencies`** | ✨ (예외는 🧹 · 📦) |
 | `FIX:`  | `bug` | 🐛 버그 수정 |
 | `REF:`  | `refactor` (CI·테스트만이면 `ci` · `test`) | 🧹 내부 정리 |
 | `DEL:`  | `refactor`, 공개 API 를 없앴다면 `breaking` 추가 | 🧹 (`breaking` 을 붙이면 💥 로 갑니다) |
 | `DOCS:` | `documentation` | 📝 문서 |
 | `UPT:`  | `dependencies` | 📦 의존성 |
+
+`ADD:` 의 예외는 4-1 과 같은 이유입니다 — 테스트를 늘리거나 워크플로를 붙인 것이
+사용자에게 ✨ 새 기능으로 실리면 릴리스 노트가 거짓말을 합니다.
 
 **`security` 와 `external-api` 는 접두사가 없습니다.** 어느 접두사에나 덧붙습니다.
 
@@ -165,10 +168,18 @@ upt/curl-cffi
 - 보안 수정 → `FIX:` + `bug` + `security`
 
 > **라벨 두 개를 붙여도 릴리스 노트에는 한 번만 나옵니다.** PR 이 여러 카테고리에
-> 걸리면 `.github/release.yml` 에 **먼저 오는 쪽 하나**에만 들어갑니다. 그래서 그
-> 파일에서 `security` · `external-api` 를 `bug` **앞에** 두었습니다 — 순서가
-> 반대면 `bug` + `external-api` 가 🐛 에만 들어가고 🚄 는 영영 비어 있게 됩니다.
-> 카테고리를 새로 넣거나 순서를 바꿀 때 이 점을 잊지 마세요.
+> 걸리면 `.github/release.yml` 에 **먼저 오는 쪽 하나**에만 들어갑니다.
+> (`generate-notes` 로 확인했습니다 — 두 라벨을 붙인 PR 이 앞 카테고리에만
+> 실렸습니다.)
+>
+> 그래서 그 파일에서 `security` · `external-api` 를 `feature`·`bug` **앞에**
+> 두었습니다. **위 표의 "릴리스 노트" 열은 덧붙는 라벨이 없을 때의 값입니다** —
+> `security`·`external-api` 를 붙이면 **그쪽이 이깁니다.** 새 엔드포인트 PR
+> (`ADD:` + `feature` + `external-api`)은 ✨ 가 아니라 🚄 에 실립니다.
+>
+> 카테고리를 새로 넣거나 순서를 바꿀 때 이 점을 잊지 마세요. 확인은
+> `gh api repos/leegyurak/pykorail/releases/generate-notes -f tag_name=probe
+> -f previous_tag_name=<직전태그>` 로 — 릴리스를 만들지 않고 분류 결과만 돌려줍니다.
 
 ## 7. 커밋 전 점검
 
@@ -185,5 +196,11 @@ upt/curl-cffi
 CI 가 커밋 메시지 형식을 검사하지는 않습니다. 사람 기여자에게는
 `CONTRIBUTING.md` 에 같은 내용이 안내로 적혀 있고, 형식이 틀렸다고 PR 을
 돌려보내지 않습니다 — 메인테이너가 고칩니다.
+
+**dependabot PR 은 이 규약 밖입니다.** 제목이 `Bump …` 형태로 오고, 게다가
+`.github/release.yml` 의 `exclude.authors` 에 `dependabot` 이 있어 릴리스 노트
+분류 전에 아예 제외됩니다. 지금은 `.github/dependabot.yml` 이 없어 문제가 되지
+않지만, 나중에 켜면 📦 의존성 항목이 조용히 빕니다 — 그때 사람이 여는 `UPT:` PR
+만 거기 실린다는 것을 기억하세요.
 
 에이전트는 지키세요. 히스토리를 읽는 비용이 곧 다음 작업의 비용입니다.
