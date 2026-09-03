@@ -20,6 +20,8 @@ Claude Code 에서만 의미 있는 내용입니다.
 - `verify` — 전체 게이트(format → lint → typecheck → test+coverage)를 순서대로 실행.
 - `add-endpoint` — 새 코레일 엔드포인트 추가 절차. **APK 디컴파일 검증이 0단계**입니다.
 - `add-error-code` — 새 응답 코드를 예외 계층에 매핑하는 절차.
+- `address-review` — PR 에 올라온 Claude 리뷰를 끝까지 처리(반영 판단 → 답글 →
+  resolve). resolve 는 GraphQL 이 필요합니다.
 
 ## 도구 사용
 

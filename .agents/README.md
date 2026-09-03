@@ -60,6 +60,8 @@ CLAUDE.md                       ← @AGENTS.md 임포트 + Claude 전용 안내
 - **verify** — 전체 게이트 실행 + 실패 진단
 - **add-endpoint** — 새 코레일 엔드포인트를 상수→모델→리소스→테스트로 붙이는 절차
 - **add-error-code** — 새 응답 코드를 예외 계층에 매핑
+- **address-review** — PR 리뷰를 끝까지 처리: CI·리뷰 대기 → 반영 판단 → 답글 →
+  resolve (미해결 스레드가 있으면 머지 버튼이 잠깁니다)
 
 ## 유지보수
 
