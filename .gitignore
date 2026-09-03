@@ -28,3 +28,9 @@ src/pykorail/_version.py
 /a.py
 /scratch*.py
 /local/
+
+# 리버스 엔지니어링용 APK 와 디컴파일 결과 — 절대 커밋하지 않습니다.
+*.apk
+androguard.log
+/korail_apk/
+/korail_src/

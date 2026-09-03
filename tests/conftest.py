@@ -11,6 +11,7 @@ from pykorail.client import Korail
 from pykorail.constants import API_ENDPOINTS
 from tests.payloads import (
     OK,
+    REFUND_FEE_PAYLOAD,
     RESERVATION_LIST_PAYLOAD,
     SEARCH_PAYLOAD,
     SEAT_DETAIL_PAYLOAD,
@@ -87,6 +88,7 @@ def korail(make_korail) -> tuple[Korail, FakeSession]:
             "cancel": OK,
             "pay": OK,
             "refund": OK,
+            "refund_commission": REFUND_FEE_PAYLOAD,
             "logout": OK,
         }
     )
