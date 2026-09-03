@@ -20,6 +20,10 @@ def train_info_of(entry: dict[str, Any]) -> dict[str, Any] | None:
     (``entry["ticket_list"][0]["train_info"][0]``)은 응답이 조금만 달라져도
     ``KeyError``/``IndexError`` 로 죽는데, 코레일은 필드를 빼먹고 보내는 서버라
     승차권 한 항목 때문에 목록 전체가 터지면 안 됩니다.
+
+    **빈 dict 도 읽을 수 없는 항목으로 봅니다.** 구조만 있고 내용이 없으면
+    승차권번호도 좌석도 금액도 없는 유령 승차권이 만들어져 목록에 섞입니다 —
+    관용적으로 읽는 것과 없는 것을 지어내는 것은 다릅니다.
     """
     node: Any = entry
     for key in TRAIN_INFO_PATH:
@@ -27,7 +31,7 @@ def train_info_of(entry: dict[str, Any]) -> dict[str, Any] | None:
         if not isinstance(branch, list) or not branch:
             return None
         node = branch[0]
-    return node if isinstance(node, dict) else None
+    return node if isinstance(node, dict) and node else None
 
 
 @dataclass(frozen=True)

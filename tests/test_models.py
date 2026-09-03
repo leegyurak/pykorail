@@ -292,6 +292,7 @@ class TestTicket:
             ({"ticket_list": []}, "빈 리스트"),
             ({"ticket_list": [{}]}, "train_info 가 없음"),
             ({"ticket_list": [{"train_info": []}]}, "빈 train_info"),
+            ({"ticket_list": [{"train_info": [{}]}]}, "빈 dict — 유령 승차권이 됩니다"),
             ({"ticket_list": "0"}, "리스트가 아닌 값"),
             ({"ticket_list": [{"train_info": ["0"]}]}, "dict 가 아닌 항목"),
         ],
