@@ -126,6 +126,11 @@ client.py  (Korail — 로그인/로그아웃/연결 수명만)
   나가는데 `str` 혼합 `Enum` 은 파이썬 버전에 따라 `str()` 이 `"TrainType.KTX"` 로
   나와 전송 값이 조용히 깨집니다. `options.py` 의 패턴을 따르세요.
 - **가변 기본 인자 금지.** 불변 모델의 컬렉션 필드는 `tuple` 기본값 `()` 을 쓰세요.
+- **텍스트 파일 I/O 는 `encoding="utf-8"` 을 명시.** `open()`·`read_text()`·
+  `write_text()` 전부입니다. 파이썬 기본 인코딩은 플랫폼 로케일을 따라가서
+  Windows 에서는 UTF-8 이 아니고(cp1252 · cp949), 한국어가 든 이 저장소의 파일은
+  **그 환경에서만** 깨집니다. CI 는 우분투에서만 도니 실행으로는 안 잡힙니다 —
+  `tests/test_style.py` 가 AST 로 강제합니다.
 - **`dict.get()` 연쇄 대신 파싱 헬퍼.**
 - **주석은 "무엇"이 아니라 "왜".** 특히 이상해 보이는 코드(앱 동작 재현, 서버 요구
   사항)에는 이유를 남기세요 — 다음 사람이 "정리"하려 들기 때문입니다.
@@ -236,8 +241,13 @@ def test_individual_by_default(self) -> None:
 
 ## 6. CI/CD
 
-- **CI** (`.github/workflows/ci.yml`) — 린트·타입 검사, Python **3.10–3.14** 테스트
-  (+ Windows·macOS 각 1개), 빌드·설치 확인, Trivy 스캔.
+- **CI** (`.github/workflows/ci.yml`) — 린트·타입 검사, Python **3.10–3.14** 테스트,
+  빌드·설치 확인, Trivy 스캔. **전부 우분투에서만 돕니다** — `src/` 에 플랫폼 분기가
+  없고, Windows 러너가 실제로 잡아주던 인코딩 기본값 문제는 `tests/test_style.py`
+  의 `test_text_io_declares_encoding` 이 AST 로 대신합니다.
+- **Claude 리뷰** (`.github/workflows/claude-review.yml`) — main 으로 가는 PR 에
+  리뷰 코멘트를 답니다. 필수 체크(`ci-ok`)가 **아니며**, 이 파일 자체를 고치는
+  PR 에서는 건너뛰어집니다(초록불로 표시되니 주의).
 - **Release** (`.github/workflows/release.yml`) — `v*` 태그에서 동작. 태그와 패키지
   버전을 대조하고, 전 버전 게이트를 다시 돌린 뒤 PyPI(Trusted Publishing)에 올리고
   릴리스 노트를 자동 생성합니다.
