@@ -20,6 +20,8 @@ Claude Code 에서만 의미 있는 내용입니다.
 - `verify` — 전체 게이트(format → lint → typecheck → test+coverage)를 순서대로 실행.
 - `add-endpoint` — 새 코레일 엔드포인트 추가 절차. **APK 디컴파일 검증이 0단계**입니다.
 - `add-error-code` — 새 응답 코드를 예외 계층에 매핑하는 절차.
+- `commit` — 커밋 메시지·PR 제목·브랜치 이름 규약(`ADD:`/`FIX:`/`REF:`/`DEL:`/
+  `DOCS:`/`UPT:`). 커밋하거나 PR 을 열기 전에 읽으세요.
 
 ## 도구 사용
 
