@@ -57,20 +57,20 @@ jobs:
         run: uv run ty check
 
   test:
-    name: 테스트 (${{ matrix.python }} · ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: 테스트 (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    # 우분투만 돕니다. 예전에는 Windows·macOS 러너를 하나씩 뒀는데, 근거였던
+    # "curl_cffi 가 Windows 에서 DLL 로드에 실패해 requests 폴백을 탄다" 가
+    # 러너에서는 사실이 아니었습니다 — curl-cffi 가 정상 설치되어 폴백 경로는
+    # 한 번도 실행되지 않았습니다. `src/` 에 플랫폼 분기 코드도 없습니다.
+    #
+    # Windows 가 실제로 잡아주던 유일한 것은 기본 인코딩(cp1252 · cp949)이었고,
+    # 그건 tests/test_style.py 의 `test_text_io_declares_encoding` 이 AST 로
+    # 대신합니다 — 모든 플랫폼에서, 푸시 전에, 더 빠르게.
     strategy:
       fail-fast: false
       matrix:
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-        os: [ubuntu-latest]
-        include:
-          # curl_cffi 는 Windows 에서 libcurl DLL 로드에 실패할 수 있고 그때
-          # requests 폴백을 타므로, 그 경로를 실제로 도는 러너가 하나는 필요합니다.
-          - python: "3.12"
-            os: windows-latest
-          - python: "3.12"
-            os: macos-latest
     steps:
       - uses: actions/checkout@v5
         with:
@@ -93,10 +93,9 @@ jobs:
 
       - name: 커버리지 요약
         if: always()
-        shell: bash
         run: |
           {
-            echo "### 커버리지 — Python ${{ matrix.python }} / ${{ matrix.os }}"
+            echo "### 커버리지 — Python ${{ matrix.python }}"
             echo ''
             uv run coverage report --format=markdown || echo '(커버리지 리포트 없음)'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -105,7 +104,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ matrix.os }}-py${{ matrix.python }}
+          name: coverage-py${{ matrix.python }}
           path: |
             coverage.xml
             junit.xml
