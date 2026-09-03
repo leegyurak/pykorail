@@ -1,0 +1,66 @@
+name: ✨ 기능 제안
+description: 새 엔드포인트·기능·개선 아이디어.
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        아키텍처 규약은 [`AGENTS.md`](../blob/main/AGENTS.md) 에 있습니다.
+        엔드포인트 추가라면 계층(상수 → 모델 → 리소스 → 테스트)을 따르게 됩니다.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 어떤 문제를 겪고 있나요
+      description: |
+        해결책이 아니라 **문제**를 먼저 적어주세요. 지금은 어떻게 우회하고 있는지도
+        알려주시면 더 나은 설계를 찾는 데 도움이 됩니다.
+      placeholder: 왕복 예매를 하려면 편도로 두 번 예매해야 해서, 한쪽만 성공하는 경우를 직접 처리해야 합니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 제안하는 API
+      description: 실제로 쓰게 될 코드를 적어주세요. 이름·인자·반환 타입이 드러나면 좋습니다.
+      render: python
+      placeholder: |
+        reservation = korail.reservations.create_round_trip(outbound, inbound, passengers=[AdultPassenger(2)])
+    validations:
+      required: false
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 종류
+      options:
+        - 새 코레일 엔드포인트 지원
+        - 기존 API 개선 (사용성·타입)
+        - 새 모델 / 필드 노출
+        - 문서
+        - 개발 환경 (CI·린트·테스트)
+        - 기타
+    validations:
+      required: true
+
+  - type: textarea
+    id: endpoint-evidence
+    attributes:
+      label: 엔드포인트 근거 (새 엔드포인트 제안일 때)
+      description: |
+        **필드 이름을 추측으로 만들 수 없습니다.** 코레일 응답 필드는 `h_dpt_rs_stn_cd`
+        처럼 규칙이 없어서 틀리면 조용히 빈 값이 됩니다. 아는 만큼 적어주세요:
+        클래스 경로(`com.korail.mobile.…`), 폼 필드, 응답 샘플(개인정보 가린 것).
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 범위 확인
+      options:
+        - label: 이 라이브러리(코레일 KTX)의 범위 안입니다. SRT 는 별도 서비스라 대상이 아닙니다.
+          required: true

@@ -1,0 +1,235 @@
+name: CI
+
+# 도는 시점은 세 가지입니다.
+#   1. main 으로 가는 PR (열 때 · 커밋 추가할 때 · 다시 열 때)
+#   2. main 에 머지·직접 푸시될 때
+#   3. 수동 실행
+# 태그는 여기서 안 잡습니다 — 릴리스는 release.yml 이 담당합니다.
+#
+# 문서만 고쳐도 돌게 두는 것은 의도적입니다. paths-ignore 로 건너뛰면 필수 체크인
+# `ci-ok` 가 아예 생성되지 않아 PR 이 영원히 머지 대기 상태가 됩니다.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # PR 에 새 커밋이 오면 이전 실행을 취소합니다. 다만 main 은 취소하지 않습니다 —
+  # 연속 머지 때 중간 커밋이 한 번도 검증되지 않은 채 넘어가면 안 됩니다.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # uv 가 파이썬을 직접 받게 두면 setup-python 보다 빠르고 3.14 도 바로 씁니다.
+  UV_PYTHON_DOWNLOADS: automatic
+
+jobs:
+  lint:
+    name: 린트 · 타입 검사
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # hatch-vcs 가 태그를 읽어야 버전이 나옵니다.
+          fetch-depth: 0
+
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: 의존성 설치
+        run: uv sync --all-extras --frozen
+
+      - name: ruff format (검사만)
+        run: uv run ruff format --check --diff
+
+      - name: ruff check
+        run: uv run ruff check --output-format=github
+
+      - name: ty check
+        run: uv run ty check
+
+  test:
+    name: 테스트 (${{ matrix.python }} · ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        os: [ubuntu-latest]
+        include:
+          # curl_cffi 는 Windows 에서 libcurl DLL 로드에 실패할 수 있고 그때
+          # requests 폴백을 타므로, 그 경로를 실제로 도는 러너가 하나는 필요합니다.
+          - python: "3.12"
+            os: windows-latest
+          - python: "3.12"
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # hatch-vcs 가 태그를 읽어야 버전이 나옵니다.
+          fetch-depth: 0
+
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          python-version: ${{ matrix.python }}
+
+      - name: 의존성 설치
+        run: uv sync --all-extras
+
+      - name: 테스트 + 커버리지
+        # 커버리지 하한(90%)은 pyproject 의 addopts 에 있어 여기서 다시 지정하지 않습니다.
+        run: uv run pytest --cov-report=xml --cov-report=term-missing --junitxml=junit.xml
+
+      - name: 커버리지 요약
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### 커버리지 — Python ${{ matrix.python }} / ${{ matrix.os }}"
+            echo ''
+            uv run coverage report --format=markdown || echo '(커버리지 리포트 없음)'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 커버리지 아티팩트 업로드
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.os }}-py${{ matrix.python }}
+          path: |
+            coverage.xml
+            junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  build:
+    name: 빌드 · 설치 확인
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # hatch-vcs 가 태그를 읽어야 버전이 나옵니다.
+          fetch-depth: 0
+
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: sdist · wheel 빌드
+        run: uv build
+
+      - name: 아티팩트 메타데이터 검증
+        run: uvx twine check dist/*
+
+      - name: 깨끗한 환경에서 휠 임포트
+        # 소스 트리가 아닌 곳에서 돌려 실수로 src/ 를 임포트하지 않게 합니다.
+        run: |
+          cd "$(mktemp -d)"
+          uv run --isolated --no-project \
+            --with "$GITHUB_WORKSPACE"/dist/*.whl \
+            python -c "
+          import pykorail
+          from pykorail import Card, Korail
+          from pykorail.device import DEVICE_PROFILES
+          assert pykorail.__version__
+          assert len(DEVICE_PROFILES) == 100
+          print('휠 정상:', pykorail.__version__)
+          "
+
+      - name: 빌드 아티팩트 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 14
+
+  security:
+    name: 보안 스캔 (Trivy)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # hatch-vcs 가 태그를 읽어야 버전이 나옵니다.
+          fetch-depth: 0
+
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: 잠긴 의존성을 requirements.txt 로 내보내기
+        # Trivy 가 uv.lock 을 못 읽는 버전이어도 의존성 취약점을 놓치지 않도록
+        # 표준 포맷으로도 함께 내보냅니다.
+        run: uv export --format requirements-txt --all-extras --no-emit-project -o requirements.txt
+
+      - name: Trivy 스캔 (게이트)
+        # HIGH·CRITICAL 이 하나라도 있으면 여기서 실패합니다.
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+        env:
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
+
+      - name: Trivy 스캔 (SARIF 생성)
+        if: always()
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '0'
+          format: sarif
+          output: trivy-results.sarif
+        env:
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
+
+      - name: SARIF 를 코드 스캐닝에 업로드
+        # 비공개 저장소에서 GitHub Advanced Security 가 없으면 이 단계는 실패합니다.
+        # 위의 게이트가 이미 빌드를 막으므로 업로드 실패로 CI 를 깨뜨리지 않습니다.
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
+
+  # 브랜치 보호(ruleset)에서 필수로 지정하는 유일한 체크입니다.
+  # 이름은 상태 체크 컨텍스트로 쓰이므로 ASCII 로 고정합니다 — 바꾸면
+  # .github/rulesets/main-protection.json 도 함께 고쳐야 합니다.
+  ci-ok:
+    name: ci-ok
+    runs-on: ubuntu-latest
+    needs: [lint, test, build, security]
+    if: always()
+    steps:
+      - name: 선행 잡 결과 확인
+        run: |
+          echo '${{ toJSON(needs) }}'
+          [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "false" ]

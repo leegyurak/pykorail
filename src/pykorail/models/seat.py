@@ -1,0 +1,46 @@
+"""좌석 한 자리."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from pykorail.models.parsing import integer, text
+
+
+@dataclass(frozen=True)
+class Seat:
+    """예약·승차권에 딸린 좌석 하나.
+
+    좌석번호가 비어 있으면 실좌석이 아니라 예약대기 자리입니다.
+    """
+
+    car: str
+    seat: str
+    seat_type: str
+    passenger_type: str
+    price: int
+    original_price: int
+    discount: int
+
+    @classmethod
+    def from_response(cls, data: dict[str, Any]) -> Seat:
+        return cls(
+            car=text(data, "h_srcar_no"),
+            seat=text(data, "h_seat_no"),
+            seat_type=text(data, "h_psrm_cl_nm"),
+            passenger_type=text(data, "h_psg_tp_dv_nm"),
+            price=integer(data, "h_rcvd_amt"),
+            original_price=integer(data, "h_seat_prc"),
+            discount=integer(data, "h_dcnt_amt"),
+        )
+
+    @property
+    def is_waiting(self) -> bool:
+        return self.seat == ""
+
+    def __repr__(self) -> str:
+        price = f"[{self.price}원({self.discount}원 할인)]"
+        if self.is_waiting:
+            return f"예약대기 ({self.seat_type}) {self.passenger_type}{price}"
+        return f"{self.car}호차 {self.seat} ({self.seat_type}) {self.passenger_type} {price}"

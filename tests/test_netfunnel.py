@@ -1,0 +1,224 @@
+"""NetFunnel 대기열 게이트."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+from pykorail.auth.netfunnel import NETFUNNEL_URL, NetFunnelHelper
+from pykorail.exceptions import NetFunnelError
+
+PASS = "200:key=TICKET-1&nwait=0"
+WAIT = "201:key=TICKET-1&nwait=42"
+COMPLETE = "200:key=TICKET-1"
+ALREADY = "502:key=TICKET-1"
+BROKEN = "200"
+
+
+class FakeResponse:
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+class FakeSession:
+    """미리 정한 순서대로 응답을 돌려주는 세션."""
+
+    def __init__(self, script: list[str]) -> None:
+        self.headers: dict[str, str] = {}
+        self.script = list(script)
+        self.calls: list[dict[str, Any]] = []
+
+    def get(self, url: str, **kwargs: Any) -> FakeResponse:
+        self.calls.append({"url": url, **kwargs})
+        return FakeResponse(self.script.pop(0))
+
+    def post(self, url: str, **kwargs: Any) -> FakeResponse:  # pragma: no cover - 미사용
+        raise AssertionError("NetFunnel 은 GET 만 씁니다")
+
+    def close(self) -> None:  # pragma: no cover - 미사용
+        pass
+
+
+@pytest.fixture
+def make_helper(monkeypatch: pytest.MonkeyPatch):
+    def factory(script: list[str]) -> tuple[NetFunnelHelper, FakeSession]:
+        session = FakeSession(script)
+        monkeypatch.setattr("pykorail.auth.netfunnel.create_session", lambda headers: session)
+        return NetFunnelHelper(), session
+
+    return factory
+
+
+class TestRun:
+    def test_passes_straight_through(self, make_helper) -> None:
+        # given
+        helper, session = make_helper([PASS, COMPLETE])
+
+        # when
+        key = helper.run()
+
+        # then
+        assert key == "TICKET-1"
+        assert len(session.calls) == 2
+
+    def test_already_completed_counts_as_success(self, make_helper) -> None:
+        # given
+        helper, _ = make_helper([PASS, ALREADY])
+
+        # when
+        key = helper.run()
+
+        # then
+        assert key == "TICKET-1"
+
+    def test_polls_while_queued(self, make_helper, monkeypatch) -> None:
+        # given
+        monkeypatch.setattr("pykorail.auth.netfunnel.time.sleep", lambda _: None)
+        helper, session = make_helper([WAIT, WAIT, PASS, COMPLETE])
+
+        # when
+        key = helper.run()
+
+        # then
+        assert key == "TICKET-1"
+        assert len(session.calls) == 4, "대기 두 번 + 통과 + 완료"
+
+    def test_uses_the_queue_url(self, make_helper) -> None:
+        # given
+        helper, session = make_helper([PASS, COMPLETE])
+
+        # when
+        helper.run()
+
+        # then
+        assert session.calls[0]["url"] == NETFUNNEL_URL
+
+    def test_completion_failure_raises_and_clears(self, make_helper) -> None:
+        # given
+        helper, _ = make_helper([PASS, "999:key=X"])
+
+        # when
+        with pytest.raises(NetFunnelError, match="complete"):
+            helper.run()
+
+        # then
+        assert helper._cached_key is None
+
+    def test_unparseable_response_raises(self, make_helper) -> None:
+        # given
+        helper, _ = make_helper([BROKEN])
+
+        # when & then
+        with pytest.raises(NetFunnelError, match="parse"):
+            helper.run()
+
+    def test_transport_failure_is_wrapped(self, monkeypatch) -> None:
+        # given
+        class Exploding:
+            headers: dict[str, str] = {}
+
+            def get(self, url: str, **kwargs: Any) -> FakeResponse:
+                raise OSError("연결 실패")
+
+        monkeypatch.setattr("pykorail.auth.netfunnel.create_session", lambda headers: Exploding())
+
+        # when & then
+        with pytest.raises(NetFunnelError, match="연결 실패"):
+            NetFunnelHelper().run()
+
+
+class TestCache:
+    def test_second_run_reuses_the_ticket(self, make_helper) -> None:
+        # given
+        helper, session = make_helper([PASS, COMPLETE])
+        helper.run()
+
+        # when
+        key = helper.run()
+
+        # then
+        assert key == "TICKET-1"
+        assert len(session.calls) == 2, "캐시가 살아 있으면 추가 요청이 없어야 합니다"
+
+    def test_clear_forces_a_refetch(self, make_helper) -> None:
+        # given
+        helper, session = make_helper([PASS, COMPLETE, PASS, COMPLETE])
+        helper.run()
+
+        # when
+        helper.clear()
+        helper.run()
+
+        # then
+        assert len(session.calls) == 4
+
+    def test_expired_cache_refetches(self, make_helper) -> None:
+        # given
+        helper, session = make_helper([PASS, COMPLETE, PASS, COMPLETE])
+        helper.run()
+
+        # when
+        helper._last_fetch_time -= helper.CACHE_TTL + 1
+        helper.run()
+
+        # then
+        assert len(session.calls) == 4
+
+
+class TestParams:
+    @pytest.mark.parametrize(
+        ("operation", "expected_opcode"),
+        [("getTidchkEnter", "5101"), ("chkEnter", "5002"), ("setComplete", "5004")],
+    )
+    def test_opcodes(self, make_helper, operation: str, expected_opcode: str) -> None:
+        # given
+        helper, _ = make_helper([])
+
+        # when
+        params = helper._build_params(helper.OP_CODE[operation])
+
+        # then
+        assert params["opcode"] == expected_opcode
+
+    def test_enter_carries_service_ids(self, make_helper) -> None:
+        # given
+        helper, _ = make_helper([])
+
+        # when
+        params = helper._build_params(helper.OP_CODE["getTidchkEnter"])
+
+        # then
+        assert params["sid"] == "service_1"
+        assert params["aid"] == "act_8"
+
+    def test_check_carries_the_key(self, make_helper) -> None:
+        # given
+        helper, _ = make_helper([])
+
+        # when
+        params = helper._build_params(helper.OP_CODE["chkEnter"], key="K")
+
+        # then
+        assert params["key"] == "K"
+        assert params["ttl"] == "1"
+
+    def test_complete_carries_the_key(self, make_helper) -> None:
+        # given
+        helper, _ = make_helper([])
+
+        # when
+        params = helper._build_params(helper.OP_CODE["setComplete"], key="K")
+
+        # then
+        assert params["key"] == "K"
+
+    def test_missing_key_becomes_empty_string(self, make_helper) -> None:
+        # given
+        helper, _ = make_helper([])
+
+        # when
+        params = helper._build_params(helper.OP_CODE["setComplete"])
+
+        # then
+        assert params["key"] == ""

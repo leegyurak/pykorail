@@ -1,0 +1,15 @@
+# 빈 이슈를 막아 최소한의 재현 정보 없이 올라오는 것을 줄입니다.
+blank_issues_enabled: false
+
+contact_links:
+  - name: 💬 질문 · 사용법
+    url: https://github.com/leegyurak/pykorail/discussions
+    about: 버그가 아니라 "어떻게 쓰나요?" 라면 Discussions 에 올려 주세요.
+
+  - name: 🔐 보안 취약점
+    url: https://github.com/leegyurak/pykorail/security/advisories/new
+    about: 취약점은 공개 이슈가 아니라 비공개 보안 권고로 신고해 주세요.
+
+  - name: 🚄 코레일 공식 고객센터 (1544-7788)
+    url: https://www.letskorail.com
+    about: 예매·환불·운임 등 코레일 서비스 자체 문의는 여기가 아닙니다. 이 저장소는 비공식 클라이언트입니다.

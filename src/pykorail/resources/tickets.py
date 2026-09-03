@@ -1,0 +1,86 @@
+"""승차권 리소스."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pykorail.constants import API_ENDPOINTS
+from pykorail.exceptions import NoResultsError
+from pykorail.models.ticket import Ticket
+from pykorail.resources.base import Resource
+
+
+class TicketResource(Resource):
+    """``korail.tickets`` — 발권된 승차권 조회·환불."""
+
+    def all(self) -> list[Ticket]:
+        """발권 완료된 승차권 목록. 없으면 빈 리스트.
+
+        목록 응답에는 실제 좌석번호가 없어 승차권마다 상세를 한 번 더 조회하고,
+        **좌석까지 확정한 뒤** 승차권 객체를 만듭니다.
+        """
+        payload = self._api.get(
+            API_ENDPOINTS["myticketlist"],
+            params={
+                **self._api.base_payload(),
+                "txtDeviceId": "",
+                "txtIndex": "1",
+                "h_page_no": "1",
+                "h_abrd_dt_from": "",
+                "h_abrd_dt_to": "",
+                "hiduserYn": "Y",
+            },
+        )
+        try:
+            self._api.check(payload)
+
+            tickets: list[Ticket] = []
+            for entry in payload.get("reservation_list", []):
+                raw = entry["ticket_list"][0]["train_info"][0]
+                tickets.append(Ticket.from_response(raw, seat_no=self._seat_no(raw)))
+            return tickets
+        except NoResultsError:
+            return []
+
+    def _seat_no(self, raw: dict[str, Any]) -> str | None:
+        """승차권 상세 조회로 실제 좌석번호를 확인합니다. 없으면 ``None``."""
+        payload = self._api.get(
+            API_ENDPOINTS["myticketseat"],
+            params={
+                **self._api.base_payload(),
+                "h_orgtk_wct_no": raw.get("h_orgtk_wct_no"),
+                "h_orgtk_ret_sale_dt": raw.get("h_orgtk_ret_sale_dt"),
+                "h_orgtk_sale_sqno": raw.get("h_orgtk_sale_sqno"),
+                "h_orgtk_ret_pwd": raw.get("h_orgtk_ret_pwd"),
+            },
+        )
+        self._api.check(payload)
+
+        ticket_info = payload.get("ticket_infos", {}).get("ticket_info", [{}])[0]
+        seat = ticket_info.get("tk_seat_info", [{}])[0]
+        return seat.get("h_seat_no")
+
+    def refund(self, ticket: Ticket) -> None:
+        """발권된 승차권을 환불합니다.
+
+        Raises:
+            KorailError: 환불이 거부됐습니다.
+        """
+        payload = self._api.post(
+            API_ENDPOINTS["refund"],
+            data={
+                **self._api.base_payload(),
+                "txtPrnNo": ticket.pnr_no,
+                "h_orgtk_sale_dt": ticket.sale_info2,
+                "h_orgtk_sale_wct_no": ticket.sale_info1,
+                "h_orgtk_sale_sqno": ticket.sale_info3,
+                "h_orgtk_ret_pwd": ticket.sale_info4,
+                "h_mlg_stl": "N",
+                "tk_ret_tms_dv_cd": "21",
+                "trnNo": ticket.train.train_no,
+                "pbpAcepTgtFlg": "N",
+                "latitude": "",
+                "longitude": "",
+            },
+        )
+        self._api.check(payload)

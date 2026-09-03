@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ty_cache/
+.DS_Store
+
+# 커버리지 산출물
+.coverage
+.coverage.*
+coverage.xml
+junit.xml
+htmlcov/
+
+# CI 가 uv.lock 에서 생성하는 것들 (커밋 대상 아님)
+requirements.txt
+*.sarif
+
+# hatch-vcs 가 빌드 시 생성
+src/pykorail/_version.py
+
+# 로컬 실험용 스크립트 — 자격증명이 들어가기 쉬우므로 절대 커밋하지 않습니다.
+/a.py
+/scratch*.py
+/local/

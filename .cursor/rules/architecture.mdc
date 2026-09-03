@@ -1,0 +1,48 @@
+---
+description: pykorail 계층 구조와 모델 규약 — 어기면 안 되는 아키텍처 규칙
+alwaysApply: true
+---
+
+# pykorail 아키텍처
+
+전체 규범은 `AGENTS.md` 에 있습니다. 이 규칙은 그중 **항상 적용되는** 부분입니다.
+
+## 계층 (의존은 한 방향)
+
+```
+client.py  (Korail — 로그인/로그아웃/연결 수명만)
+   └── resources/   stations · trains · reservations · tickets   ← 엔드포인트는 전부 여기
+          └── api.py (ApiClient) ── auth/ ── crypto.py · transport.py
+                 └── models/  (불변 응답 모델)
+
+exceptions/ · constants.py · options.py · device/  ← 누구나 의존 가능, 아무에게도 의존 안 함
+```
+
+## 절대 규칙
+
+1. **엔드포인트는 리소스에만.** `Korail` 본체에 새 API 메서드를 붙이지 마세요.
+   허용되는 것은 `login`·`logout`·`close` 와 리소스 배선뿐입니다.
+2. **HTTP 는 `ApiClient` 를 통해서만.** 리소스가 `self._session` 을 직접 만지거나
+   `curl_cffi`/`requests` 를 import 하면 안 됩니다.
+3. **응답 모델은 `@dataclass(frozen=True)` + `from_response()`.** 객체를 만든 뒤
+   필드를 채우지 마세요(`obj.x = ...` 금지). 부속 데이터는 먼저 조회해서 생성자에
+   넘기세요.
+4. **상속이 아니라 합성.** `Ticket`·`Reservation` 은 `Train` 을 참조합니다
+   (`ticket.train.dep_name`). "A는 B다"가 참일 때만 상속하세요.
+5. **파싱은 `models/parsing.py` 의 `text`/`integer`/`floating` 으로.**
+   코레일은 필드를 빼먹거나 빈 문자열로 보냅니다.
+6. **새 응답 코드는 `KorailError` 상속 + `codes`/`default_msg` 만.**
+   등록 테이블을 만들지 마세요 — `error_for_code()` 가 자동으로 찾습니다.
+   클라이언트 측 입력 오류는 `PykorailError` 의 형제로.
+7. **상태 변경 메서드는 `-> None`, 실패 시 예외.** 불리언 반환 금지.
+8. **생성자에서 I/O 금지.** `Korail()` 은 네트워크를 치지 않습니다.
+
+## 명령
+
+`uv` 로만 실행합니다 (`pip`·맨몸 `python` 금지):
+
+```bash
+uv run ruff format && uv run ruff check --fix && uv run ty check && uv run pytest
+```
+
+네 개를 전부 통과해야 작업이 끝난 것입니다.

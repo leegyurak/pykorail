@@ -1,0 +1,75 @@
+"""코레일 스마트 앱 API 의 고정 상수.
+
+여기 있는 값들은 실제 앱 트래픽에서 관찰·디컴파일로 확인된 것입니다.
+**동작하는 값을 근거 없이 바꾸지 마세요** — 서버가 앱 버전·기기 문자열을 게이트로
+볼 수 있습니다.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Final
+
+EMAIL_REGEX: Final = re.compile(r"[^@]+@[^@]+\.[^@]+")
+PHONE_NUMBER_REGEX: Final = re.compile(r"(\d{3})-(\d{3,4})-(\d{4})")
+
+#: 하이픈이 빠진 휴대폰 번호. 서버는 하이픈이 있는 형태만 휴대폰으로 인식하므로,
+#: 이 형태가 들어오면 회원번호로 잘못 조회돼 "비밀번호가 틀렸다"는 엉뚱한 응답이
+#: 옵니다. 요청을 보내기 전에 걸러 알려 주려고 따로 둡니다.
+HYPHENLESS_PHONE_REGEX: Final = re.compile(r"^01[016789]\d{7,8}$")
+
+API_HOST: Final = "smart.letskorail.com"
+
+#: 기기 프로파일을 주입하지 않았을 때 쓰는 기본 User-Agent.
+#: :func:`~pykorail.device.dalvik_user_agent` 로 프로파일별 렌더가 가능합니다.
+USER_AGENT: Final = "Dalvik/2.1.0 (Linux; U; Android 13; SM-S928N Build/UP1A.231005.007)"
+
+DEFAULT_HEADERS: Final[dict[str, str]] = {
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    "User-Agent": USER_AGENT,
+    "Host": API_HOST,
+    "Connection": "Keep-Alive",
+    "Accept-Encoding": "gzip",
+}
+
+KORAIL_MOBILE: Final = f"https://{API_HOST}:443/classes/com.korail.mobile"
+
+#: DynaPath 서명(``x-dynapath-m-token``)과 ``Sid`` 를 요구하는 경로들.
+DYNAPATH_PATHS: Final[tuple[str, ...]] = (
+    "/classes/com.korail.mobile.certification.TicketReservation",
+    "/classes/com.korail.mobile.nonMember.NonMemTicket",
+    "/classes/com.korail.mobile.seatMovie.ScheduleView",
+    "/classes/com.korail.mobile.seatMovie.ScheduleViewSpecial",
+    "/classes/com.korail.mobile.trn.prcFare.do",
+    "/classes/com.korail.mobile.login.Login",
+)
+
+API_ENDPOINTS: Final[dict[str, str]] = {
+    "login": f"{KORAIL_MOBILE}.login.Login",
+    "logout": f"{KORAIL_MOBILE}.common.logout",
+    "search_schedule": f"{KORAIL_MOBILE}.seatMovie.ScheduleView",
+    "reserve": f"{KORAIL_MOBILE}.certification.TicketReservation",
+    "cancel": f"{KORAIL_MOBILE}.reservationCancel.ReservationCancelChk",
+    "myticketseat": f"{KORAIL_MOBILE}.refunds.SelTicketInfo",
+    "myticketlist": f"{KORAIL_MOBILE}.myTicket.MyTicketList",
+    "myreservationview": f"{KORAIL_MOBILE}.reservation.ReservationView",
+    "myreservationlist": f"{KORAIL_MOBILE}.certification.ReservationList",
+    "pay": f"{KORAIL_MOBILE}.payment.ReservationPayment",
+    "refund": f"{KORAIL_MOBILE}.refunds.RefundsRequest",
+    "code": f"{KORAIL_MOBILE}.common.code.do",
+    "stationdata": f"{KORAIL_MOBILE}.common.stationdata",
+}
+
+# --------------------------------------------------------------- 앱 신원값
+DEVICE: Final = "AD"
+APP_VERSION: Final = "250601002"
+API_KEY: Final = "korail1234567890"
+SID_KEY: Final = b"2485dd54d9deaa36"
+DEVICE_ID: Final = "558a4f02041657ea"
+
+#: curl_cffi 임퍼소네이션 타깃. 안드로이드 크롬 계열이라 Dalvik UA 와 함께 써도
+#: TLS 지문이 안드로이드 기기로 일관되게 보입니다.
+IMPERSONATE: Final = "chrome131_android"
+
+#: 한국 표준시(UTC+9). 코레일 API 의 모든 날짜·시각은 KST 기준입니다.
+KST_OFFSET_HOURS: Final = 9

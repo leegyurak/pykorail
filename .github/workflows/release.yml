@@ -1,0 +1,257 @@
+name: Release
+
+# v0.1.0 처럼 태그를 밀면 실행됩니다.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# PyPI 업로드는 API 토큰이 아니라 **Trusted Publishing(OIDC)** 을 씁니다.
+# 최초 1회 PyPI 에서 설정해야 합니다:
+#   PyPI → pykorail → Publishing → Add a new pending publisher
+#     Owner: leegyurak / Repository: pykorail
+#     Workflow: release.yml / Environment: pypi
+# 설정 전에는 publish 잡이 실패합니다 (그 앞 단계는 정상 동작).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: PyPI 업로드 없이 빌드·검증만
+        type: boolean
+        default: true
+
+# 릴리스는 절대 취소하지 않습니다. 업로드 도중 끊기면 PyPI 에 반쪽짜리 상태가
+# 남을 수 있고, 그건 되돌릴 수 없습니다 (같은 버전 재업로드 불가).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: 태그에서 버전 도출
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # hatch-vcs 가 태그를 읽어야 버전이 나옵니다.
+          fetch-depth: 0
+
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: 태그에서 버전 도출
+        id: version
+        run: |
+          set -euo pipefail
+
+          # 버전의 유일한 출처는 git 태그입니다 (hatch-vcs). pyproject.toml 에는
+          # 숫자가 없고 빌드 시점에 태그에서 채워지므로, 손으로 올릴 것이 없습니다.
+          uv sync --all-extras --frozen
+          pkg_version="$(uv run python -c 'import pykorail; print(pykorail.__version__)')"
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag_version="${GITHUB_REF_NAME#v}"
+            echo "태그: ${GITHUB_REF_NAME} → 버전 ${tag_version}"
+
+            # 여기서 어긋나면 태그가 아니라 hatch-vcs 설정 문제입니다
+            # (얕은 체크아웃으로 태그가 안 보이는 경우 등).
+            if [ "$tag_version" != "$pkg_version" ]; then
+              echo "::error::태그(${tag_version})에서 도출된 버전이 패키지 버전(${pkg_version})과 다릅니다. \
+          checkout 의 fetch-depth 와 hatch-vcs 설정을 확인하세요."
+              exit 1
+            fi
+          fi
+
+          echo "version=$pkg_version" >> "$GITHUB_OUTPUT"
+          # PEP 440 사전 릴리스(0.2.0b1 등)는 GitHub 릴리스도 prerelease 로 표시합니다.
+          if printf '%s' "$pkg_version" | grep -Eq '(a|b|rc|\.dev)[0-9]+$'; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  gate:
+    name: 게이트 (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    needs: [verify]
+    strategy:
+      fail-fast: true
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # hatch-vcs 가 태그를 읽어야 버전이 나옵니다.
+          fetch-depth: 0
+
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          python-version: ${{ matrix.python }}
+
+      - name: 의존성 설치
+        run: uv sync --all-extras
+
+      - name: 린트 · 타입 · 테스트
+        # 릴리스는 되돌리기 어려우므로 전체 게이트를 지원 버전 전부에서 다시 돌립니다.
+        run: |
+          uv run ruff format --check
+          uv run ruff check
+          uv run ty check
+          uv run pytest
+
+  security:
+    name: 보안 스캔 (Trivy)
+    runs-on: ubuntu-latest
+    needs: [verify]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # hatch-vcs 가 태그를 읽어야 버전이 나옵니다.
+          fetch-depth: 0
+
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: 잠긴 의존성 내보내기
+        run: uv export --format requirements-txt --all-extras --no-emit-project -o requirements.txt
+
+      - name: Trivy 스캔
+        # 취약한 의존성을 그대로 PyPI 에 올리지 않도록 릴리스에서도 게이트합니다.
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+        env:
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1
+
+  build:
+    name: 배포 아티팩트 빌드
+    runs-on: ubuntu-latest
+    needs: [verify, gate, security]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # hatch-vcs 가 태그를 읽어야 버전이 나옵니다.
+          fetch-depth: 0
+
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: 빌드
+        run: uv build
+
+      - name: 메타데이터 검증
+        run: uvx twine check dist/*
+
+      - name: 휠 설치 확인
+        run: |
+          cd "$(mktemp -d)"
+          uv run --isolated --no-project \
+            --with "$GITHUB_WORKSPACE"/dist/*.whl \
+            python -c "import pykorail; print('휠 정상:', pykorail.__version__)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: PyPI 업로드
+    runs-on: ubuntu-latest
+    needs: [verify, build]
+    if: github.event_name == 'push' || inputs.dry_run == false
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pykorail
+    permissions:
+      # Trusted Publishing 용 OIDC 토큰. API 토큰을 저장하지 않습니다.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist/
+
+      - name: PyPI 에 업로드
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # 같은 버전을 다시 밀었을 때 워크플로 전체를 깨뜨리지 않습니다.
+          skip-existing: true
+          print-hash: true
+
+  github-release:
+    name: GitHub 릴리스 생성
+    runs-on: ubuntu-latest
+    needs: [verify, build, publish]
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist/
+
+      - name: 릴리스 노트 작성 + 발행
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          # 헤더는 직접 쓰고, 변경 목록은 GitHub 이 PR·커밋에서 생성하게 합니다
+          # (.github/release.yml 의 라벨 분류를 따릅니다).
+          cat > notes.md <<EOF
+          ## pykorail v${VERSION}
+
+          \`\`\`bash
+          uv add pykorail==${VERSION}
+          # 또는
+          pip install pykorail==${VERSION}
+          \`\`\`
+
+          - PyPI: https://pypi.org/project/pykorail/${VERSION}/
+          - 지원 파이썬: 3.10 – 3.14
+          EOF
+
+          # `--generate-notes` 가 위 내용 뒤에 PR·커밋 기반 변경 목록을 붙입니다
+          # (분류는 .github/release.yml 을 따릅니다).
+          flags=(--title "v${VERSION}" --notes-file notes.md --generate-notes --verify-tag)
+
+          # `set -e` 아래에서 `[ ... ] && arr+=(...)` 는 조건이 거짓일 때 종료 상태 1 을
+          # 남기므로, 애매함을 없애려고 명시적으로 분기합니다.
+          if [ "${PRERELEASE}" = "true" ]; then
+            flags+=(--prerelease)
+          fi
+
+          gh release create "${GITHUB_REF_NAME}" "${flags[@]}" dist/*

@@ -1,0 +1,139 @@
+name: 🐛 버그 신고
+description: 라이브러리가 기대와 다르게 동작합니다.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### ⚠️ 올리기 전에 꼭 확인하세요
+
+        **자격증명·카드정보를 절대 붙여넣지 마세요.** 로그와 트레이스백에는
+        아이디·비밀번호·카드번호·예약번호(PNR)가 섞여 들어갈 수 있습니다.
+        붙여넣기 전에 `***` 로 가려 주세요.
+
+        코레일 서버는 시간대에 따라(명절 예매 등) 응답이 달라집니다.
+        같은 코드가 어제는 되고 오늘은 안 된다면 서버 쪽 변화일 수 있으니,
+        `🚄 코레일 API 변경` 템플릿이 더 맞을 수 있습니다.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 사전 확인
+      options:
+        - label: 최신 버전에서 재현했습니다 (`uv add pykorail@latest`).
+          required: true
+        - label: 붙여넣는 로그에서 아이디·비밀번호·카드번호를 가렸습니다.
+          required: true
+        - label: 같은 문제의 기존 이슈가 없는지 검색했습니다.
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: pykorail 버전
+      description: "`uv run python -c \"import pykorail; print(pykorail.__version__)\"`"
+      placeholder: 0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: 파이썬 버전
+      description: "`python -V`"
+      placeholder: "3.12.13"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 운영체제
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - 기타 (아래에 적어주세요)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 어느 부분인가요
+      description: 확실하지 않으면 "모르겠음" 을 고르세요.
+      options:
+        - 로그인 / 인증
+        - 열차 조회 (trains.search)
+        - 예매 (reservations.create)
+        - 결제 (reservations.pay)
+        - 취소 / 환불
+        - 승차권 · 예약 조회
+        - 역 조회 / 역 이름 검증
+        - 설치 / 의존성 (curl_cffi 등)
+        - 타입 힌트 / 정적 검사
+        - 모르겠음
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 무슨 일이 일어났나요
+      description: 기대한 동작과 실제 동작을 함께 적어주세요.
+      placeholder: |
+        기대: 서울→부산 조회 시 열차 목록이 나온다
+        실제: NoResultsError 가 난다 (앱에서는 같은 시간대에 열차가 보임)
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 재현 코드
+      description: 실행 가능한 최소 코드를 주세요. 자격증명은 반드시 가려 주세요.
+      render: python
+      placeholder: |
+        from datetime import datetime
+        from pykorail import Korail
+
+        korail = Korail.logged_in("***", "***")
+        trains = korail.trains.search("서울", "부산", depart_after=datetime(2026, 4, 1, 9, 0))
+    validations:
+      required: true
+
+  - type: textarea
+    id: traceback
+    attributes:
+      label: 트레이스백 / 오류 메시지
+      description: 전체 트레이스백을 주세요. **가리는 것을 잊지 마세요.**
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: debug-log
+    attributes:
+      label: 디버그 로그 (선택)
+      description: |
+        `verbose=True` 로 켜면 요청·응답이 로그로 남습니다.
+        **응답 본문에는 이름·이메일·전화번호·예약번호가 들어 있으니 반드시 가려 주세요.**
+
+        ```python
+        import logging
+        logging.basicConfig(level=logging.DEBUG)
+        korail = Korail(verbose=True)
+        ```
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: device-profile
+    attributes:
+      label: 기기 프로파일 id (선택)
+      description: "`device_profile` 을 주입했다면 그 `profile.id`. 특정 프로파일에서만 나는 문제일 수 있습니다."
+      placeholder: s24ultra-a15
+    validations:
+      required: false

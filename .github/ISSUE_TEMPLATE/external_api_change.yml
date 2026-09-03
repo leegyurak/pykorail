@@ -1,0 +1,127 @@
+name: 🚄 코레일 API 변경
+description: 어제까지 되던 게 갑자기 안 됩니다 — 서버 쪽이 바뀐 것 같습니다.
+title: "[API] "
+labels: [external-api, bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        이 패키지는 **문서 없는 사설 API** 를 상대합니다. 코레일이 앱을 업데이트하거나
+        탐지 규칙을 조이면, 우리 코드가 그대로여도 갑자기 실패합니다. 그런 변화는
+        일반 버그와 대응이 달라서 템플릿을 따로 뒀습니다.
+
+        ### ⚠️ 자격증명을 붙여넣지 마세요
+        로그·응답 본문에 아이디·비밀번호·카드번호·개인정보가 들어 있습니다. `***` 로 가려 주세요.
+
+        ### 먼저 확인해 주세요
+        코레일 **공식 앱**에서 같은 동작이 되는지 보세요. 앱에서도 안 되면 서버 점검이나
+        정책 변경(예: 명절 예매 제한)일 수 있고, 이 라이브러리로 고칠 수 없습니다.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 사전 확인
+      options:
+        - label: 공식 코레일 앱에서는 같은 동작이 정상적으로 됩니다.
+          required: true
+        - label: 최신 버전의 pykorail 에서 재현했습니다.
+          required: true
+        - label: 붙여넣는 내용에서 자격증명·개인정보를 가렸습니다.
+          required: true
+
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: 증상
+      options:
+        - 로그인이 실패한다 (자격증명은 맞음)
+        - 조회는 되는데 예매만 실패한다
+        - 응답이 JSON 이 아니다 (TransportError)
+        - 처음 보는 오류 코드가 온다
+        - 응답에 새 필드가 생겼다 / 필드가 사라졌다
+        - 항상 빈 결과가 온다
+        - 기타
+    validations:
+      required: true
+
+  - type: input
+    id: since
+    attributes:
+      label: 언제부터인가요
+      description: 마지막으로 정상 동작한 날짜와 처음 실패한 날짜를 알면 원인을 좁히는 데 큰 도움이 됩니다.
+      placeholder: "2026-09-01까지는 정상, 2026-09-02부터 실패"
+    validations:
+      required: true
+
+  - type: input
+    id: error-code
+    attributes:
+      label: 코레일 오류 코드 (h_msg_cd)
+      description: "`KorailError` 의 `.code` 값. 예외 문자열 끝 괄호 안에 있습니다."
+      placeholder: WRC000000
+    validations:
+      required: false
+
+  - type: input
+    id: error-message
+    attributes:
+      label: 코레일 오류 메시지 (h_msg_txt)
+      description: 서버가 준 한국어 메시지 그대로.
+      placeholder: 로그인 정보가 일치하지 않습니다.
+    validations:
+      required: false
+
+  - type: textarea
+    id: raw-response
+    attributes:
+      label: 응답 원문
+      description: |
+        가장 도움이 되는 정보입니다. **개인정보를 가린 뒤** 붙여넣어 주세요.
+        가릴 것: `strCustNm`(이름), `strEmailAdr`, `strCpNo`(전화), `strMbCrdNo`(회원번호),
+        `h_pnr_no`(예약번호), 좌석·결제 정보.
+      render: json
+      placeholder: |
+        {"strResult": "FAIL", "h_msg_cd": "WRC000000", "h_msg_txt": "...", "strCustNm": "***"}
+    validations:
+      required: false
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 재현 코드
+      render: python
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: 현재 코레일 앱 버전 (선택)
+      description: |
+        스토어에 올라와 있는 `com.korail.talk` 버전. 앱이 판올림되면서 서버가
+        구버전을 막는 경우가 있어, 이 값이 `constants.APP_VERSION` 갱신 근거가 됩니다.
+      placeholder: "7.0.1"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: transport
+    attributes:
+      label: 어떤 HTTP 백엔드로 돌았나요
+      description: |
+        curl_cffi 를 못 쓰면 requests 로 폴백하는데, 그때는 TLS 지문이 달라져
+        서버가 로그인을 거부할 수 있습니다. 실행 시 경고 로그로 확인할 수 있습니다.
+      options:
+        - curl_cffi (기본)
+        - requests 폴백 (경고 로그가 떴음)
+        - 모르겠음
+    validations:
+      required: true
+
+  - type: input
+    id: device-profile
+    attributes:
+      label: 기기 프로파일 id (선택)
+      placeholder: s24ultra-a15
+    validations:
+      required: false

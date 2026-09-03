@@ -1,0 +1,78 @@
+---
+description: pykorail 테스트 규약 — 제어 흐름 금지, parametrize, 커버리지 90%
+globs: tests/**/*.py
+alwaysApply: false
+---
+
+# 테스트 규약
+
+## 제어 흐름 금지 (자동 강제)
+
+**테스트 함수 안에 `if` / `for` / `while` 문을 쓰지 마세요.**
+`tests/test_style.py` 가 AST 를 훑어 강제합니다 — 어기면 빨갛게 실패합니다.
+
+- 케이스가 여러 개 → `@pytest.mark.parametrize`
+- 집합 검증 → 컴프리헨션으로 **위반 목록**을 만들어 `== []` 와 비교
+
+```python
+# 나쁨 — 어디서 깨졌는지 모르고 첫 실패에서 멈춤
+def test_build_ids():
+    for profile in DEVICE_PROFILES:
+        assert profile.build_id.startswith(...)
+
+# 좋음 — 위반 전부가 한 번에 드러남
+def test_build_ids():
+    bad = [p.id for p in DEVICE_PROFILES if not p.build_id.startswith(...)]
+    assert bad == []
+```
+
+컴프리헨션은 값을 뽑는 **식**이라 허용됩니다. 금지 대상은 제어 흐름 **문**입니다.
+
+## Given–When–Then (자동 강제)
+
+모든 테스트는 준비·실행·검증 경계를 주석으로 드러냅니다.
+
+- `# when` · `# then` **필수**, `# given` 은 준비 코드가 있을 때만
+- 예외 검증처럼 실행·검증이 한 덩어리면 `# when & then`
+- 순서는 given → when → then
+
+```python
+def test_merges_same_type(self) -> None:
+    # given
+    passengers = [AdultPassenger(1), AdultPassenger(2)]
+
+    # when
+    merged = Passenger.reduce(passengers)
+
+    # then
+    assert counts(merged) == [("AdultPassenger", 3)]
+```
+
+`# when` 이 여러 줄이면 대개 테스트 하나가 두 가지를 검증하고 있다는 신호입니다.
+
+## 커버리지 90% 하한
+
+`pytest` 가 `--cov-fail-under=90` 으로 돌아갑니다. 미달이면 실패입니다.
+**게이트를 낮추거나 `--no-cov` 로 우회하지 말고 테스트를 쓰세요.**
+
+## 네트워크 금지
+
+실제 요청을 절대 보내지 않습니다. `conftest.py` 의 `FakeSession` 과
+`make_korail`/`korail` 픽스처를 쓰세요. 응답 샘플은 `tests/payloads.py` 에 모으고,
+**필드 이름을 지어내지 마세요** — 실제 응답 모양이어야 합니다.
+
+## 스타일
+
+- 테스트 하나에 개념 하나. 이름은 검증하는 **행동**을 말합니다
+  (`test_missing_wait_flag_is_not_applicable`).
+- 이유가 필요한 단언에는 메시지: `assert len(session.calls) == 1, "캐시를 써야 합니다"`.
+- `pytest.raises`, `pytest.approx`, `monkeypatch`, 픽스처를 최대한 활용.
+- 일부러 잘못된 타입을 넘길 때는 `dict[str, Any]` 헬퍼나 `cast` 로 의도를 명시하세요
+  (`tests/test_card.py` 의 `card_with` 참고). 런타임 가드 테스트를 지우지 마세요.
+
+## 꼭 덮을 경계
+
+이 코드베이스의 버그는 대부분 여기서 나왔습니다:
+응답 필드 누락·빈 문자열, 자정을 넘기는 운행 시간, 타임존(naive=KST / aware=변환),
+매진·예약대기 분기, 승객 합치기(정렬 안 된 입력), 로그인 실패 경로,
+폼 필드가 실제로 나가는지.
