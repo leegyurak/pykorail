@@ -1,0 +1,160 @@
+name: Claude Review
+
+# main 으로 가는 PR 을 Claude 가 읽고 리뷰 코멘트를 답니다.
+#
+# ci.yml 과 **의도적으로 분리**했습니다. 이 잡은 필수 상태 체크(`ci-ok`)의
+# needs 에 들어가지 않습니다 — Anthropic 쪽 장애나 쿼터 소진으로 리뷰가 실패해도
+# 머지는 막히지 않아야 합니다. 리뷰는 게이트가 아니라 보조 도구입니다.
+#
+# 인증은 Anthropic API 키(`ANTHROPIC_API_KEY`)를 씁니다.
+# 키 발급: console.anthropic.com → API keys → 저장소 시크릿으로 등록.
+# 구독 정액이 아니라 **토큰 단위 종량 과금**입니다 — PR 마다 비용이 발생합니다.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  # 새 커밋이 오면 이전 리뷰를 취소합니다. 낡은 diff 를 리뷰해봐야 소용없고
+  # 토큰만 씁니다.
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  review:
+    name: Claude 코드 리뷰
+    runs-on: ubuntu-latest
+    # 공개 저장소라 포크에서 온 PR 에는 시크릿이 전달되지 않습니다. 그대로 두면
+    # 매번 인증 실패로 빨간 X 만 남으므로 아예 건너뜁니다. 포크 PR 은 사람이 봅니다.
+    # (pull_request_target 으로 바꾸면 시크릿은 오지만 포크 코드를 체크아웃하는
+    #  순간 시크릿 탈취 경로가 열립니다 — 쓰지 마세요.)
+    if: >-
+      github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # 여기만 얕은 체크아웃입니다. 다른 워크플로는 hatch-vcs 가 태그를 읽어야
+          # 해서 fetch-depth: 0 이지만, 리뷰는 패키지를 빌드하지 않습니다.
+          fetch-depth: 1
+
+      - name: Claude 리뷰
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+
+          # 종량 과금이라 모델 선택이 곧 비용입니다. Opus 5 는 $5/$25 per MTok,
+          # Sonnet 5 는 $3/$15 — 리뷰 품질보다 비용이 부담되면 이 줄만 바꾸세요.
+          claude_args: |
+            --model claude-opus-5
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+
+          prompt: |
+            저장소: ${{ github.repository }}
+            PR 번호: ${{ github.event.pull_request.number }}
+
+            이 저장소는 코레일(KTX) 스마트 예매 비공식 Python 클라이언트입니다.
+            먼저 `AGENTS.md` 를 읽으세요 — 그 문서가 이 저장소의 단일 규범이고,
+            아래는 리뷰할 때 특히 볼 지점을 추린 것입니다.
+
+            **리뷰는 한국어로 작성하세요.**
+
+            ## 보지 않아도 되는 것
+
+            포매팅·린트·타입 오류·테스트 실패는 CI(`ruff format`, `ruff check`,
+            `ty check`, `pytest`)가 이미 잡습니다. 거기서 걸릴 것을 중복해서
+            지적하지 마세요. 기계가 못 잡는 것에 집중하세요.
+
+            ## 1. 외부 API 불변식 — 가장 중요합니다
+
+            이 패키지는 문서 없는 사설 API 를 상대하고, 서버가 앱 버전·기기 문자열·
+            TLS 지문·서명을 교차 검증합니다. **여기서의 실수는 테스트를 통과하고도
+            운영에서 조용히 로그인이 막히는 형태로 나타납니다.** 최우선으로 보세요.
+
+            - `constants.py` 의 `USER_AGENT`·`APP_VERSION`·`API_KEY`·`SID_KEY`·
+              `DEVICE_ID`·`IMPERSONATE` 가 근거 없이 바뀌지 않았는지
+            - `auth/dynapath.py` 의 인코딩 테이블·상수(`_TABLE`·`_RADIX`·
+              `_MODULUS`·`_CHUNK`)가 그대로인지
+            - 폼 필드가 "안 쓰는 것 같아서" 정리되지 않았는지. 빈 문자열로 보내는
+              필드(`txtChgFlg2` 등)나 조회 엔드포인트만 `Key` 없이 빈 `Sid` 를
+              보내는 것은 앱 동작을 그대로 옮긴 것입니다 — 지우면 회귀입니다.
+            - User-Agent 와 DynaPath 서명(`os=`·`dm=`)이 같은 기기를 가리키는지.
+              한쪽만 바뀌면 그 불일치 자체가 탐지 신호입니다.
+            - 암호화 형태(이중 base64, `Sid` 끝의 개행, 키를 IV 로 재사용하는
+              AES-CBC)를 "고치려" 들지 않았는지 — 서버가 그 모양을 기대합니다.
+            - **새 엔드포인트라면**: PR 본문에 공식 코레일톡+ APK 디컴파일 근거
+              (경로·폼 필드·서명 대상 여부)가 있는지 확인하세요. 없으면 그 사실을
+              지적하세요. 추측한 필드 이름은 에러가 아니라 조용한 빈 값이 됩니다.
+
+            요청 페이로드를 바꾼 변경이라면, 그 변경이 의도된 것인지 그리고 페이로드
+            불변을 증명하는 테스트가 함께 왔는지 확인하세요.
+
+            ## 2. 아키텍처 계층 (AGENTS.md §2)
+
+            의존성은 한 방향입니다. 화살표를 거스르는 import 를 잡으세요.
+
+            - 엔드포인트는 `resources/` 에만. `Korail` 본체에 새 API 메서드가
+              붙지 않았는지.
+            - HTTP 는 `ApiClient` 를 통해서만. 리소스가 `self._session` 을 직접
+              만지거나 `requests`/`curl_cffi` 를 import 하면 위반입니다.
+            - 응답 모델은 `@dataclass(frozen=True)` + `from_response()` 클래스메서드.
+              객체를 만든 뒤 필드를 채우는 코드(`obj.x = ...`)는 금지입니다.
+            - 상속이 아니라 합성. "A는 B다" 가 참일 때만 상속하세요.
+            - 응답 파싱은 `models/parsing.py` 의 `text`/`integer`/`floating` 으로.
+              `data.get(...)` 연쇄를 날로 쓰면 필드 누락 때 모델 생성이 죽습니다.
+            - 새 예외는 `KorailError` 를 상속하고 `codes`·`default_msg` 만 채우면
+              `error_for_code()` 가 자동으로 찾습니다. 등록 테이블을 만들지 마세요.
+              클라이언트 측 입력 오류는 `PykorailError` 의 형제로.
+            - 상태 변경 메서드(`create`/`pay`/`cancel`/`refund`)는 `None` 을 반환하고
+              실패 시 예외를 던져야 합니다. 불리언을 돌려주면 위반입니다.
+            - 생성자에서 I/O 금지.
+
+            ## 3. Python 규약
+
+            - 최소 3.10. 3.10 에 없는 문법(`type` 문, 3.12 제네릭)을 쓰지 않았는지.
+            - 모든 모듈이 `from __future__ import annotations` 로 시작하는지.
+            - `Enum` 대신 `Final` 문자열 상수 + `Literal` 별칭. 이 값들은 폼에 그대로
+              실려 나가는데 `str` 혼합 `Enum` 은 파이썬 버전에 따라 전송 값이 조용히
+              깨집니다.
+            - 가변 기본 인자 금지. 불변 모델의 컬렉션 필드는 `tuple` 기본값 `()`.
+            - 주석은 "무엇"이 아니라 "왜". 이상해 보이는 코드(앱 동작 재현, 서버
+              요구사항)에 이유가 남았는지 — 없으면 다음 사람이 "정리"하려 듭니다.
+            - 민감한 값을 담는 모델은 `__repr__` 에서 마스킹했는지 (`Card` 참고).
+
+            ## 4. 테스트
+
+            - 테스트 함수 안에 `if`/`for`/`while` **문**이 없어야 합니다.
+              여러 케이스는 `@pytest.mark.parametrize`, 반복 검증은 컴프리헨션으로
+              위반 목록을 만들어 빈 리스트와 비교. (`tests/test_style.py` 가 AST 로
+              강제하지만, 우회한 흔적이 있는지 보세요.)
+            - `# when` 과 `# then` 은 필수, `# given` 은 준비 코드가 있을 때만.
+              when 블록이 여러 줄이면 대개 테스트 하나가 두 가지를 검증하는 신호입니다.
+            - 네트워크 금지. `conftest.py` 의 `FakeSession` 과 `korail` 픽스처를
+              쓰는지. 실제 요청을 보내는 테스트가 있으면 반드시 지적하세요.
+            - 응답 샘플은 `tests/payloads.py` 에. 필드 이름을 지어내지 않았는지.
+            - 경계 동작이 덮였는지: 필드 누락, 빈 문자열, 자정을 넘기는 시각, 매진,
+              예약대기, 로그인 실패. 이 코드베이스의 버그는 대부분 거기서 나왔습니다.
+            - 커버리지 90% 하한. 새 코드에 테스트가 없으면 지적하세요.
+
+            ## 5. 문서
+
+            공개 API 를 바꿨다면 `docs/reference.md` 가 함께 갱신됐는지.
+
+            ## 리뷰 방식
+
+            찾은 것을 **전부** 보고하세요. 확신이 낮거나 사소해 보이는 것도
+            빼지 말고, 대신 각 지적에 **심각도**(치명적/중요/사소)와 **확신도**를
+            붙이세요. 걸러내는 것은 사람이 합니다 — 조용히 빠뜨리는 것보다
+            올렸다가 기각되는 편이 낫습니다.
+
+            - 구체적인 코드 위치가 있는 것은 인라인 코멘트로.
+            - 전반적인 관찰이나 잘한 점은 최상위 코멘트로.
+            - 포매터가 결정하는 것(줄바꿈, 따옴표, 공백)은 지적하지 마세요.
+            - 지적할 때는 왜 문제인지와 어떻게 고치면 되는지를 함께 쓰세요.
+            - 문제가 없으면 없다고 짧게 쓰고 끝내세요. 억지로 만들지 마세요.
