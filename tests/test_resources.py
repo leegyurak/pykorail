@@ -661,6 +661,25 @@ class TestTickets:
         # then
         assert [t.seat_no for t in tickets] == ["5A"], "상세를 못 받으면 목록 응답 값으로 되돌아갑니다"
 
+    def test_unreadable_entry_is_skipped_not_fatal(self, make_korail) -> None:
+        """항목 하나가 비어 있다고 목록 전체가 KeyError 로 죽으면 안 됩니다."""
+        # given
+        client, _ = make_korail(
+            {
+                "myticketlist": {
+                    "strResult": "SUCC",
+                    "reservation_list": [{"ticket_list": []}, *TICKET_LIST_PAYLOAD["reservation_list"]],
+                },
+                "myticketseat": TICKET_SEAT_PAYLOAD,
+            }
+        )
+
+        # when
+        tickets = client.tickets.all()
+
+        # then
+        assert [t.seat_no for t in tickets] == ["7C"], "읽을 수 있는 항목만 남습니다"
+
     def test_seat_detail_failure_other_than_no_results_propagates(self, make_korail) -> None:
         """세션 만료 같은 진짜 실패까지 빈 목록으로 접어 버리면 안 됩니다."""
         # given
