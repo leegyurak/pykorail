@@ -166,6 +166,45 @@ class TestLogin:
         with pytest.raises(LoginFailedError):
             client.login("me@example.com", "pw")
 
+    @pytest.mark.parametrize(
+        "cipher_info",
+        [
+            pytest.param({"idx": "7"}, id="key-missing"),
+            pytest.param({"key": "0" * 32}, id="idx-missing"),
+            pytest.param({"idx": "7", "key": ""}, id="key-empty"),
+            pytest.param({}, id="both-missing"),
+            pytest.param("", id="not-a-dict"),
+        ],
+    )
+    def test_partial_cipher_key_raises_login_failed(self, make_korail, cipher_info: object) -> None:
+        """SUCC 여도 키가 덜 오면 KeyError 가 아니라 LoginFailedError 여야 합니다."""
+        # given
+        client, _ = make_korail({"code": {"strResult": "SUCC", "app.login.cphd": cipher_info}})
+
+        # when & then
+        with pytest.raises(LoginFailedError, match="암호화 키"):
+            client.login("me@example.com", "pw")
+
+    def test_unusable_cipher_key_raises_login_failed(self, make_korail) -> None:
+        """AES 키 길이가 안 맞으면 pycryptodome 의 ValueError 가 새어 나가면 안 됩니다."""
+        # given
+        client, _ = make_korail({"code": {"strResult": "SUCC", "app.login.cphd": {"idx": "7", "key": "short"}}})
+
+        # when & then
+        with pytest.raises(LoginFailedError, match="쓸 수 없습니다"):
+            client.login("me@example.com", "pw")
+
+    def test_login_returns_nothing(self, make_korail) -> None:
+        """성공 여부를 반환하지 않는 것이 이 메서드의 계약입니다."""
+        # given
+        client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": LOGIN_OK})
+
+        # when
+        result = client.login("me@example.com", "pw")
+
+        # then
+        assert result is None
+
 
 class TestHyphenlessPhoneGuard:
     """하이픈 없는 번호는 회원번호로 잘못 조회돼 엉뚱한 실패를 냅니다."""

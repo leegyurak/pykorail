@@ -160,11 +160,22 @@ class Korail:
         """
         payload = self._api.post(API_ENDPOINTS["code"], data={"code": "app.login.cphd"})
         cipher_info = payload.get("app.login.cphd")
-        if payload.get("strResult") != "SUCC" or not cipher_info:
+        cipher = cipher_info if isinstance(cipher_info, dict) else {}
+        idx, key = cipher.get("idx"), cipher.get("key")
+
+        # ``strResult`` 가 SUCC 여도 idx·key 가 빠지거나 빈 값으로 올 수 있습니다.
+        # 날로 인덱싱하면 KeyError 가 그대로 새어 나가 "로그인 실패는 전부
+        # LoginFailedError" 라는 login() 의 계약이 깨집니다.
+        if payload.get("strResult") != "SUCC" or not idx or not key:
             raise LoginFailedError("비밀번호 암호화 키를 발급받지 못했습니다", payload.get("h_msg_cd"))
 
-        self._idx = cipher_info["idx"]
-        return encrypt_password(password, cipher_info["key"])
+        self._idx = idx
+        try:
+            return encrypt_password(password, key)
+        except (AttributeError, TypeError, ValueError) as exc:
+            # 키가 문자열이 아니거나 길이가 AES 규격(16·24·32바이트)에 안 맞는 경우.
+            # pycryptodome 의 예외를 날것으로 올리면 호출자가 잡을 타입이 없습니다.
+            raise LoginFailedError(f"발급받은 암호화 키를 쓸 수 없습니다: {exc}") from exc
 
     def login(self, korail_id: str, korail_pw: str) -> None:
         """로그인합니다. 실패는 전부 예외입니다 — 성공 여부를 반환하지 않습니다.
