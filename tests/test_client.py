@@ -56,26 +56,59 @@ class TestLogin:
         client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": LOGIN_OK})
 
         # when
-        succeeded = client.login("me@example.com", "pw")
+        client.login("me@example.com", "pw")
 
         # then
-        assert succeeded is True
         assert client.logined
         assert client.membership_number == "1234567890"
         assert client.name == "홍길동"
         assert client.email == "me@example.com"
         assert client.phone_number == "010-1234-5678"
 
-    def test_failed_login_returns_false(self, make_korail) -> None:
+    def test_rejected_credentials_raise(self, make_korail) -> None:
+        """반환값으로 알려 주면 확인하지 않은 호출자가 로그인 없이 진행합니다."""
+        # given
+        client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": LOGIN_FAIL})
+
+        # when & then
+        with pytest.raises(LoginFailedError):
+            client.login("me@example.com", "pw")
+
+    def test_rejected_login_leaves_the_account_empty(self, make_korail) -> None:
         # given
         client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": LOGIN_FAIL})
 
         # when
-        succeeded = client.login("me@example.com", "pw")
+        with pytest.raises(LoginFailedError):
+            client.login("me@example.com", "pw")
 
         # then
-        assert succeeded is False
         assert not client.logined
+        assert client.membership_number is None
+
+    def test_server_reason_is_carried(self, make_korail) -> None:
+        """비밀번호 오류와 휴면 계정은 사용자가 해야 할 일이 다릅니다 — 뭉개면 안 됩니다."""
+        # given
+        client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": LOGIN_FAIL})
+
+        # when
+        with pytest.raises(LoginFailedError) as exc:
+            client.login("me@example.com", "pw")
+
+        # then
+        assert exc.value.msg == "비밀번호가 틀렸습니다"
+        assert exc.value.code == "WRC000000"
+
+    def test_falls_back_when_the_server_gives_no_reason(self, make_korail) -> None:
+        # given
+        client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": {"strResult": "FAIL"}})
+
+        # when
+        with pytest.raises(LoginFailedError) as exc:
+            client.login("me@example.com", "pw")
+
+        # then
+        assert exc.value.msg == "아이디 또는 비밀번호가 올바르지 않습니다"
 
     @pytest.mark.parametrize(
         ("korail_id", "expected_flag"),
@@ -133,6 +166,45 @@ class TestLogin:
         with pytest.raises(LoginFailedError):
             client.login("me@example.com", "pw")
 
+    @pytest.mark.parametrize(
+        "cipher_info",
+        [
+            pytest.param({"idx": "7"}, id="key-missing"),
+            pytest.param({"key": "0" * 32}, id="idx-missing"),
+            pytest.param({"idx": "7", "key": ""}, id="key-empty"),
+            pytest.param({}, id="both-missing"),
+            pytest.param("", id="not-a-dict"),
+        ],
+    )
+    def test_partial_cipher_key_raises_login_failed(self, make_korail, cipher_info: object) -> None:
+        """SUCC 여도 키가 덜 오면 KeyError 가 아니라 LoginFailedError 여야 합니다."""
+        # given
+        client, _ = make_korail({"code": {"strResult": "SUCC", "app.login.cphd": cipher_info}})
+
+        # when & then
+        with pytest.raises(LoginFailedError, match="암호화 키"):
+            client.login("me@example.com", "pw")
+
+    def test_unusable_cipher_key_raises_login_failed(self, make_korail) -> None:
+        """AES 키 길이가 안 맞으면 pycryptodome 의 ValueError 가 새어 나가면 안 됩니다."""
+        # given
+        client, _ = make_korail({"code": {"strResult": "SUCC", "app.login.cphd": {"idx": "7", "key": "short"}}})
+
+        # when & then
+        with pytest.raises(LoginFailedError, match="쓸 수 없습니다"):
+            client.login("me@example.com", "pw")
+
+    def test_login_returns_nothing(self, make_korail) -> None:
+        """성공 여부를 반환하지 않는 것이 이 메서드의 계약입니다."""
+        # given
+        client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": LOGIN_OK})
+
+        # when
+        result = client.login("me@example.com", "pw")
+
+        # then
+        assert result is None
+
 
 class TestHyphenlessPhoneGuard:
     """하이픈 없는 번호는 회원번호로 잘못 조회돼 엉뚱한 실패를 냅니다."""
@@ -175,10 +247,10 @@ class TestHyphenlessPhoneGuard:
         client, _ = make_korail({"code": CIPHER_PAYLOAD, "login": LOGIN_OK})
 
         # when
-        succeeded = client.login(korail_id, "pw")
+        client.login(korail_id, "pw")
 
         # then
-        assert succeeded is True
+        assert client.logined
 
 
 class TestLoggedInFactory:
@@ -227,10 +299,10 @@ class TestLifecycle:
         client.logout()
 
         # when
-        succeeded = client.login("me@example.com", "pw")
+        client.login("me@example.com", "pw")
 
         # then
-        assert succeeded is True
+        assert client.logined
 
     def test_context_manager_closes_session(self, make_korail) -> None:
         # given
