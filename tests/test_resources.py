@@ -7,7 +7,13 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from pykorail.constants import API_ENDPOINTS
-from pykorail.exceptions import KorailError, NoResultsError, PastDepartureError, StationNotFoundError
+from pykorail.exceptions import (
+    KorailError,
+    NeedToLoginError,
+    NoResultsError,
+    PastDepartureError,
+    StationNotFoundError,
+)
 from pykorail.models import AdultPassenger, Card, ChildPassenger, Reservation, Seat, Ticket
 from pykorail.resources.trains import KST, PAST_TOLERANCE, to_kst
 from tests.payloads import (
@@ -643,6 +649,28 @@ class TestTickets:
 
         # then
         assert tickets == []
+
+    def test_empty_seat_detail_keeps_the_ticket(self, make_korail) -> None:
+        """상세 조회가 비어도 승차권은 남아야 합니다 — 목록 전체가 사라지면 안 됩니다."""
+        # given
+        client, _ = make_korail({"myticketlist": TICKET_LIST_PAYLOAD, "myticketseat": NO_RESULTS})
+
+        # when
+        tickets = client.tickets.all()
+
+        # then
+        assert [t.seat_no for t in tickets] == ["5A"], "상세를 못 받으면 목록 응답 값으로 되돌아갑니다"
+
+    def test_seat_detail_failure_other_than_no_results_propagates(self, make_korail) -> None:
+        """세션 만료 같은 진짜 실패까지 빈 목록으로 접어 버리면 안 됩니다."""
+        # given
+        client, _ = make_korail(
+            {"myticketlist": TICKET_LIST_PAYLOAD, "myticketseat": {"strResult": "FAIL", "h_msg_cd": "P058"}}
+        )
+
+        # when & then
+        with pytest.raises(NeedToLoginError):
+            client.tickets.all()
 
     def test_refund_fee_reads_amounts(self, korail) -> None:
         # given
