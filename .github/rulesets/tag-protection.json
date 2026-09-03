@@ -1,0 +1,32 @@
+{
+  "_comment": "태그는 릴리스를 촉발하므로 admin 만 만들 수 있게 막습니다. tag_name_pattern(이름 규칙)은 이 저장소에서 API 가 422 로 거부해 뺐습니다 — 원인은 확인하지 못했고, 태그 이름 검증은 릴리스 워크플로가 태그와 패키지 버전을 대조하며 대신 합니다.",
+  "name": "tag protection",
+  "target": "tag",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "~ALL"
+      ],
+      "exclude": []
+    }
+  },
+  "bypass_actors": [
+    {
+      "actor_id": 5,
+      "actor_type": "RepositoryRole",
+      "bypass_mode": "always"
+    }
+  ],
+  "rules": [
+    {
+      "type": "creation"
+    },
+    {
+      "type": "update"
+    },
+    {
+      "type": "deletion"
+    }
+  ]
+}
