@@ -7,9 +7,9 @@
 코레일 스마트 예매(코레일톡) API 를 감싼 비공식 클라이언트
 
 [![CI](https://github.com/leegyurak/pykorail/actions/workflows/ci.yml/badge.svg)](https://github.com/leegyurak/pykorail/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/pykorail?color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/pykorail/)
-[![Python](https://img.shields.io/pypi/pyversions/pykorail?color=3776AB&logo=python&logoColor=white)](https://pypi.org/project/pykorail/)
-[![License](https://img.shields.io/pypi/l/pykorail?color=green)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/pykorail?color=3775A9&logo=pypi&logoColor=white&cacheSeconds=10800)](https://pypi.org/project/pykorail/)
+[![Python](https://img.shields.io/pypi/pyversions/pykorail?color=3776AB&logo=python&logoColor=white&cacheSeconds=10800)](https://pypi.org/project/pykorail/)
+[![License](https://img.shields.io/pypi/l/pykorail?color=green&cacheSeconds=10800)](LICENSE)
 
 [빠른 시작](#빠른-시작) · [할 수 있는 것](#할-수-있는-것) · [API 레퍼런스](docs/reference.md) · [기여하기](CONTRIBUTING.md)
 
