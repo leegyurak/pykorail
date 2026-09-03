@@ -6,6 +6,7 @@ from typing import Any
 
 from pykorail.constants import API_ENDPOINTS
 from pykorail.exceptions import NoResultsError
+from pykorail.models.refund import RefundFee
 from pykorail.models.ticket import Ticket
 from pykorail.resources.base import Resource
 
@@ -59,6 +60,40 @@ class TicketResource(Resource):
         ticket_info = payload.get("ticket_infos", {}).get("ticket_info", [{}])[0]
         seat = ticket_info.get("tk_seat_info", [{}])[0]
         return seat.get("h_seat_no")
+
+    def refund_fee(self, ticket: Ticket) -> RefundFee:
+        """환불하면 수수료가 얼마인지 **조회만** 합니다. 환불하지 않습니다.
+
+        폼 필드 이름이 :meth:`refund` 와 다릅니다. 같은 ``refunds`` 패키지인데도
+        판매일자는 ``h_orgtk_ret_sale_dt``(``refund`` 는 ``h_orgtk_sale_dt``),
+        창구번호는 ``h_orgtk_wct_no``(``refund`` 는 ``h_orgtk_sale_wct_no``)
+        입니다. **네 철자가 APK 안에 전부 실재하므로 헷갈리면 조용한 빈 값이
+        됩니다** — 통일하지 마세요.
+
+        ``h_comp_*``(동반자)와 ``ctlDvCd``·``lang`` 은 앱이 기본값으로 빈 문자열을
+        보냅니다. 빼지 말고 빈 값으로 실으세요.
+
+        코레일톡+ 7.0.1 의 ``RefundCommissionIn`` 에서 확인했습니다.
+
+        Raises:
+            KorailError: 조회가 거부됐습니다.
+        """
+        payload = self._api.post(
+            API_ENDPOINTS["refund_commission"],
+            data={
+                **self._api.base_payload(),
+                "h_orgtk_ret_sale_dt": ticket.sale_info2,
+                "h_orgtk_wct_no": ticket.sale_info1,
+                "h_orgtk_sale_sqno": ticket.sale_info3,
+                "h_orgtk_ret_pwd": ticket.sale_info4,
+                "h_comp_nm": "",
+                "h_comp_cert_no": "",
+                "ctlDvCd": "",
+                "lang": "",
+            },
+        )
+        self._api.check(payload)
+        return RefundFee.from_response(payload)
 
     def refund(self, ticket: Ticket) -> None:
         """발권된 승차권을 환불합니다.

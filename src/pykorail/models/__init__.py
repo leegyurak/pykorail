@@ -22,6 +22,7 @@ from pykorail.models.passenger import (
     SeniorPassenger,
     ToddlerPassenger,
 )
+from pykorail.models.refund import RefundFee
 from pykorail.models.reservation import Reservation
 from pykorail.models.schedule import Schedule, Train
 from pykorail.models.seat import Seat
@@ -35,6 +36,7 @@ __all__ = [
     "Disability1To3Passenger",
     "Disability4To6Passenger",
     "Passenger",
+    "RefundFee",
     "Reservation",
     "Schedule",
     "Seat",

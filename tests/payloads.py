@@ -108,6 +108,17 @@ TICKET_LIST_PAYLOAD = {
     "reservation_list": [{"ticket_list": [{"train_info": [TICKET_RAW]}]}],
 }
 
+# 환불 수수료 사전조회 (refunds.CommissionView). 필드 이름은 코레일톡+ 7.0.1 의
+# RefundCommissionOut 에서 확인한 것입니다.
+REFUND_FEE_PAYLOAD = {
+    "strResult": "SUCC",
+    "ret_fee": "5600",
+    "ret_amt": "53400",
+    "use_psb_mlg_num": "1200",
+    "prg_psb_flg": "Y",
+    "tk_ret_tms_dv_cd": "21",
+}
+
 TICKET_SEAT_PAYLOAD = {
     "strResult": "SUCC",
     "ticket_infos": {"ticket_info": [{"tk_seat_info": [{"h_seat_no": "7C"}]}]},

@@ -56,6 +56,9 @@ API_ENDPOINTS: Final[dict[str, str]] = {
     "myreservationlist": f"{KORAIL_MOBILE}.certification.ReservationList",
     "pay": f"{KORAIL_MOBILE}.payment.ReservationPayment",
     "refund": f"{KORAIL_MOBILE}.refunds.RefundsRequest",
+    # 환불 수수료 사전조회. RefundsRequest 와 같은 refunds 패키지지만 폼 필드
+    # 이름이 다릅니다 — 아래 refund_fee() 주석 참고.
+    "refund_commission": f"{KORAIL_MOBILE}.refunds.CommissionView",
     "code": f"{KORAIL_MOBILE}.common.code.do",
     "stationdata": f"{KORAIL_MOBILE}.common.stationdata",
 }

@@ -10,7 +10,14 @@ from pykorail.constants import API_ENDPOINTS
 from pykorail.exceptions import KorailError, NoResultsError, PastDepartureError, StationNotFoundError
 from pykorail.models import AdultPassenger, Card, ChildPassenger, Reservation, Seat, Ticket
 from pykorail.resources.trains import KST, PAST_TOLERANCE, to_kst
-from tests.payloads import NO_RESULTS, SEARCH_PAYLOAD, STATION_PAYLOAD
+from tests.payloads import (
+    NO_RESULTS,
+    REFUND_FEE_PAYLOAD,
+    SEARCH_PAYLOAD,
+    STATION_PAYLOAD,
+    TICKET_LIST_PAYLOAD,
+    TICKET_SEAT_PAYLOAD,
+)
 
 #: 과거 조회 가드에 걸리지 않도록 넉넉히 미래인 기준 시각. 초까지 고정해야
 #: 전송값을 정확히 단언할 수 있습니다.
@@ -636,6 +643,71 @@ class TestTickets:
 
         # then
         assert tickets == []
+
+    def test_refund_fee_reads_amounts(self, korail) -> None:
+        # given
+        client, _ = korail
+        ticket = client.tickets.all()[0]
+
+        # when
+        fee = client.tickets.refund_fee(ticket)
+
+        # then
+        assert (fee.fee, fee.amount, fee.usable_mileage) == (5600, 53400, 1200)
+
+    def test_refund_fee_is_refundable_only_on_y(self, make_korail) -> None:
+        # given
+        client, _ = make_korail(
+            {
+                "myticketlist": TICKET_LIST_PAYLOAD,
+                "myticketseat": TICKET_SEAT_PAYLOAD,
+                "refund_commission": {**REFUND_FEE_PAYLOAD, "prg_psb_flg": ""},
+            }
+        )
+        ticket = client.tickets.all()[0]
+
+        # when
+        fee = client.tickets.refund_fee(ticket)
+
+        # then
+        assert fee.refundable is False, "빈 값은 판단 근거가 없으므로 불가로 봅니다"
+
+    @pytest.mark.parametrize(
+        ("field", "expected"),
+        [
+            # refund() 와 철자가 다릅니다. 통일하면 조용한 빈 값이 됩니다.
+            ("h_orgtk_ret_sale_dt", "20260320"),
+            ("h_orgtk_wct_no", "0000"),
+            ("h_orgtk_sale_sqno", "0001"),
+            ("h_orgtk_ret_pwd", "1111"),
+            # 앱이 기본값으로 빈 문자열을 싣습니다 — 빼면 안 됩니다.
+            ("h_comp_nm", ""),
+            ("h_comp_cert_no", ""),
+            ("ctlDvCd", ""),
+            ("lang", ""),
+        ],
+    )
+    def test_refund_fee_form_fields(self, korail, field: str, expected: str) -> None:
+        # given
+        client, session = korail
+        ticket = client.tickets.all()[0]
+
+        # when
+        client.tickets.refund_fee(ticket)
+
+        # then
+        assert session.kwargs_for("refund_commission")["data"][field] == expected
+
+    def test_refund_fee_does_not_call_refund(self, korail) -> None:
+        # given
+        client, session = korail
+        ticket = client.tickets.all()[0]
+
+        # when
+        client.tickets.refund_fee(ticket)
+
+        # then
+        assert API_ENDPOINTS["refund"] not in session.urls(), "조회일 뿐 환불하면 안 됩니다"
 
     def test_refund_uses_train_reference(self, korail) -> None:
         # given

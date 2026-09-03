@@ -136,9 +136,31 @@ trains = korail.trains.search("서울", "부산", include_waiting_list=True)
 | 메서드 | 반환 | 설명 |
 | --- | --- | --- |
 | `all()` | `list[Ticket]` | 발권 완료된 승차권. 실제 좌석번호까지 확정해서 옵니다. |
+| `refund_fee(ticket)` | `RefundFee` | 환불 수수료 **조회만**. 환불하지 않습니다. |
 | `refund(ticket)` | `None` | 환불. |
 
 목록 응답에는 실제 좌석번호가 없어 승차권마다 상세를 한 번 더 조회합니다.
+
+```python
+fee = korail.tickets.refund_fee(ticket)
+print(fee)  # 53,400원 환불 (수수료 5,600원)
+
+if fee.refundable and fee.fee < 10000:
+    korail.tickets.refund(ticket)
+```
+
+수수료는 출발까지 남은 시간에 따라 달라집니다. 조회 시점과 실제 환불 시점 사이에
+구간이 바뀌면 금액도 바뀝니다 — `refund_fee()` 는 **그 시점의 견적**입니다.
+
+### `RefundFee`
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `fee` | `int` | 환불 수수료(원) |
+| `amount` | `int` | 실제로 돌려받는 금액(원) |
+| `usable_mileage` | `int` | 이 환불에 쓸 수 있는 마일리지 |
+| `refundable` | `bool` | 환불 가능 여부. `False` 면 `amount` 는 의미 없음 |
+| `period_code` | `str` | 수수료를 계산한 반환 시기 구분 코드 |
 
 ## 모델
 
