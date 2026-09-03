@@ -1,0 +1,245 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit 리뷰 설정. 이 파일은 **저장소 루트**에 있어야 하고, PR 브랜치의
+# 버전이 그 PR 리뷰에 쓰입니다 — 이 파일을 고치는 PR 은 바뀐 설정으로 리뷰됩니다.
+#
+# 리뷰는 **게이트가 아닙니다.** 필수 상태 체크는 `ci-ok` 하나뿐이고
+# (`.github/rulesets/main-protection.json`), 아래 request_changes_workflow 와
+# pre_merge_checks 를 머지를 막지 않는 쪽으로 둔 것도 그래서입니다.
+
+language: ko-KR
+
+tone_instructions: >-
+  간결하고 근거 중심으로. 실행해 확인한 것과 코드를 읽고 추론한 것을 구분해 적고,
+  못 돌려본 것은 그렇게 밝히세요. 확신이 낮아도 빼지 말고 확신도를 함께 적으세요.
+
+reviews:
+  # 이 저장소는 "조용히 빠뜨리는 것보다 올렸다가 기각되는 편이 낫다" 는 쪽입니다.
+  # 걸러내는 것은 사람이 합니다.
+  profile: assertive
+
+  # 리뷰가 변경 요청을 걸면 머지가 잠깁니다. 리뷰는 보조 도구지 게이트가 아닙니다.
+  request_changes_workflow: false
+
+  high_level_summary: true
+  collapse_walkthrough: true
+  poem: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+
+  path_filters:
+    # 빌드 때 hatch-vcs 가 만들어내는 파일 — 손으로 고치지 않습니다.
+    - "!src/pykorail/_version.py"
+    # 기계가 만든 잠금 파일. 의존성 변화는 pyproject.toml 로 봅니다.
+    - "!uv.lock"
+    # 로컬 실험 스크립트 (.gitignore 대상이지만 방어적으로 한 번 더).
+    - "!a.py"
+    - "!scratch*.py"
+    - "!local/**"
+
+  path_instructions:
+    - path: "src/pykorail/{constants.py,crypto.py}"
+      instructions: >-
+        여기는 이 저장소에서 가장 위험한 영역입니다. 실수가 에러가 아니라 **조용한
+        로그인 차단**으로 나타나고, 테스트는 통과합니다.
+
+        `USER_AGENT`·`APP_VERSION`·`API_KEY`·`SID_KEY`·`DEVICE_ID`·`IMPERSONATE`
+        가 근거 없이 바뀌었다면 최우선으로 지적하세요. 서버가 앱 버전·기기 문자열·
+        TLS 지문·서명을 교차 검증하므로 하나만 어긋나도 그 자체가 탐지 신호입니다.
+
+        암호화 형태를 "고치려" 든 흔적도 마찬가지입니다 — 이중 base64, `Sid` 끝의
+        개행, 키를 IV 로 재사용하는 AES-CBC 는 전부 서버가 그 모양을 기대해서
+        그렇게 둔 것입니다. 정상화하려는 변경은 회귀입니다.
+
+        이 영역을 건드린 PR 에 **요청 페이로드 불변을 증명하는 테스트**가 함께
+        오지 않았다면 그 사실을 지적하세요.
+
+    - path: "src/pykorail/auth/**"
+      instructions: >-
+        DynaPath 서명 코드입니다. `dynapath.py` 의 인코딩 테이블과 상수
+        (`_TABLE`·`_RADIX`·`_MODULUS`·`_CHUNK`)가 바뀌었다면 최우선 지적입니다 —
+        서버가 로그인을 거부하게 됩니다.
+
+        User-Agent 와 서명(`os=`·`dm=`)은 **같은 기기를 가리켜야** 합니다.
+        `device_profile` 이 둘을 함께 바꾸는데, 한쪽만 바뀌는 변경은 불일치 자체가
+        탐지 신호가 됩니다.
+
+        `tests/test_dynapath.py` 의 골든 테스트가 함께 통과하는지 확인하세요.
+
+    - path: "src/pykorail/resources/**"
+      instructions: >-
+        엔드포인트는 **여기에만** 있습니다. `Korail` 본체(`client.py`)에 API
+        메서드가 붙었다면 계층 위반입니다.
+
+        HTTP 는 `ApiClient` 를 통해서만 나갑니다 — 리소스가 `self._session` 을 직접
+        만지거나 `requests`/`curl_cffi` 를 import 하면 위반입니다.
+
+        상태를 바꾸는 메서드(`create`·`pay`·`cancel`·`refund`)는 `None` 을 반환하고
+        실패 시 예외를 던져야 합니다. 성공 여부를 불리언으로 돌려주면 위반입니다.
+
+        폼 필드를 "안 쓰는 것 같아서" 지운 흔적을 찾으세요. 빈 문자열로 보내는
+        필드(`txtChgFlg2` 등)나 조회 엔드포인트만 `Key` 없이 빈 `Sid` 를 보내는
+        것은 공식 앱 동작을 그대로 옮긴 것입니다 — 정리하면 회귀입니다.
+
+        **새 엔드포인트라면** PR 본문에 공식 코레일톡+ APK 디컴파일 근거(경로·폼
+        필드 철자·서명 대상 여부)가 있는지 확인하고, 없으면 지적하세요. 추측한
+        필드 이름은 에러가 아니라 조용한 빈 값이 됩니다.
+
+    - path: "src/pykorail/models/**"
+      instructions: >-
+        응답 모델은 전부 `@dataclass(frozen=True)` 이고 `from_response()`
+        클래스메서드로만 만듭니다. 생성자는 값 조립, 응답 dict 해석은
+        `from_response` — 이 경계를 섞으면 지적하세요.
+
+        객체를 만든 뒤 필드를 채우는 코드(`obj.x = ...`)는 금지입니다. 부속
+        데이터가 필요하면 먼저 조회해 생성자에 넘겨야 합니다.
+
+        상속이 아니라 합성입니다. `Ticket`·`Reservation` 은 `Train` 을 **참조**
+        합니다 — "A는 B다" 가 참일 때만 상속하세요.
+
+        응답 파싱은 `models/parsing.py` 의 `text`/`integer`/`floating` 으로.
+        코레일은 필드를 빼먹거나 빈 문자열로 보내므로 `data.get(...)` 연쇄를 날로
+        쓰면 모델 생성이 죽습니다.
+
+        민감한 값을 담는 모델은 `__repr__` 에서 마스킹했는지 보세요 (`Card` 참고).
+
+    - path: "src/pykorail/**/*.py"
+      instructions: >-
+        최소 지원 버전은 **3.10** 입니다. 3.10 에 없는 문법(`type` 문, 3.12 제네릭
+        등)을 쓰면 지적하세요.
+
+        모든 모듈은 `from __future__ import annotations` 로 시작합니다.
+
+        `Enum` 대신 `Final` 문자열 상수 + `Literal` 별칭을 씁니다. 이 값들은 폼에
+        그대로 실려 나가는데 `str` 혼합 `Enum` 은 파이썬 버전에 따라 `str()` 이
+        `"TrainType.KTX"` 로 나와 전송 값이 조용히 깨집니다.
+
+        텍스트 파일 I/O 는 `encoding="utf-8"` 을 명시합니다 — 기본 인코딩이
+        플랫폼 로케일을 따라가서 Windows 에서만 깨집니다. CI 는 우분투에서만
+        돕니다.
+
+        가변 기본 인자 금지. 불변 모델의 컬렉션 필드는 `tuple` 기본값 `()`.
+
+        주석은 "무엇"이 아니라 **"왜"**. 이상해 보이는 코드(앱 동작 재현, 서버
+        요구사항)에 이유가 없으면 지적하세요 — 다음 사람이 "정리" 하려 듭니다.
+
+        생성자에서 I/O 금지. 새 예외는 `KorailError` 를 상속하고 `codes`·
+        `default_msg` 만 채우면 `error_for_code()` 가 자동으로 찾습니다 — 등록
+        테이블을 만들면 위반입니다.
+
+    - path: "tests/**/*.py"
+      instructions: >-
+        **테스트 함수 안에 `if`/`for`/`while` 문을 쓰지 않습니다.** 여러 케이스는
+        `@pytest.mark.parametrize`, 반복 검증은 컴프리헨션으로 위반 목록을 만들어
+        빈 리스트와 비교합니다. `tests/test_style.py` 가 AST 로 강제하지만, 우회한
+        흔적이 있는지 보세요.
+
+        `# when` 과 `# then` 은 필수, `# given` 은 준비 코드가 있을 때만.
+        when 블록이 여러 줄이면 대개 테스트 하나가 두 가지를 검증하는 신호입니다.
+
+        **네트워크 금지.** `conftest.py` 의 `FakeSession` 과 `korail`/`make_korail`
+        픽스처를 씁니다. 실제 요청을 보내는 테스트가 있으면 반드시 지적하세요.
+
+        응답 샘플은 `tests/payloads.py` 에 모읍니다. 필드 이름은 실제 응답에서 온
+        것이니 지어내면 안 됩니다.
+
+        **단언이 실제로 일하는지** 보세요. 좌우가 같은 식이면 항진식이라 항상
+        통과합니다 — 이 저장소에서 실제로 나온 적 있는 실수입니다.
+
+        경계 동작이 덮였는지: 필드 누락, 빈 문자열, 자정을 넘기는 시각, 매진,
+        예약대기, 로그인 실패. 이 코드베이스의 버그는 대부분 거기서 나왔습니다.
+
+        자격증명·카드번호·실제 예약번호가 섞여 들어갔다면 최우선 지적입니다.
+
+    - path: ".github/workflows/**"
+      instructions: >-
+        `actions/checkout@` 에 `fetch-depth: 0` 이 있어야 hatch-vcs 가 태그를 읽어
+        버전이 나옵니다 — 얕은 체크아웃이면 `0.0.0` 이 배포됩니다. 패키지를 빌드
+        하지 않는 잡은 예외이고, 그 이유가 주석에 있어야 합니다.
+
+        지원 파이썬 버전을 바꿨다면 `pyproject.toml` 의 `requires-python` ·
+        classifier, `_compat.MIN_PYTHON`, 두 워크플로의 매트릭스가 함께 맞는지
+        확인하세요.
+
+        필수 상태 체크는 `ci-ok` 하나입니다. 새 잡을 `ci-ok` 의 `needs` 에 넣으면
+        그 잡이 머지를 막게 됩니다 — 의도한 것인지 확인하세요.
+
+        커버리지 게이트(`--cov-fail-under=90`)를 CI 에서만 우회하는 변경은
+        지적하세요.
+
+    - path: "**/*.md"
+      instructions: >-
+        공개 API 를 바꿨다면 `docs/reference.md` 가 함께 갱신됐는지 보세요.
+        `tests/test_readme.py` 가 문서와 코드를 대조하지만 모든 문서를 덮지는
+        않습니다.
+
+        **확인하지 않은 것을 확정 서술로 적었는지** 보세요. 이 저장소는 추측을
+        사실처럼 쓰지 않는 것을 규범으로 삼습니다(`AGENTS.md` §3). 근거 없이
+        단정한 문장이 있으면 지적하세요.
+
+        문서화 문자열과 산문은 한국어, 코드 식별자는 영어입니다.
+
+  tools:
+    # ruff 가 이 저장소의 유일한 린터입니다. 다른 파이썬 린터는 같은 것을 다른
+    # 규칙으로 다시 지적해 소음만 만듭니다.
+    flake8:
+      enabled: false
+    pylint:
+      enabled: false
+    # 산문 검사기. 문서·주석이 전부 한국어라 유효한 지적을 기대하기 어렵습니다.
+    languagetool:
+      enabled: false
+    # README 가 HTML 을 섞어 쓰고 줄 길이 규약도 따로라 오탐이 많습니다.
+    markdownlint:
+      enabled: false
+
+    ruff:
+      enabled: true
+    actionlint:
+      enabled: true
+    yamllint:
+      enabled: true
+    # 이 저장소는 자격증명이 섞여 들어가면 안 되는 곳입니다. 둘 다 켜 둡니다.
+    gitleaks:
+      enabled: true
+    trufflehog:
+      enabled: true
+
+  finishing_touches:
+    # 테스트에는 AST 로 강제되는 규약(제어 흐름 금지·GWT 주석)이 있어서, 자동
+    # 생성된 테스트는 tests/test_style.py 에서 그대로 실패합니다.
+    unit_tests:
+      enabled: false
+    # 독스트링은 한국어로 쓰고 공개 API 에만 답니다. 자동 생성은 규약과 어긋납니다.
+    docstrings:
+      enabled: false
+
+  pre_merge_checks:
+    # 전부 warning 입니다 — 리뷰가 머지를 막지 않게 하려는 것입니다.
+    title:
+      mode: warning
+      requirements: >-
+        제목은 `<PREFIX>: <요약>` 형식이어야 합니다. 접두사는 ADD · FIX · REF ·
+        DEL · DOCS · UPT 중 하나이고, 요약은 한국어 명사형 종결로 마침표 없이
+        씁니다. 자세한 기준은 `.claude/skills/commit/SKILL.md` 에 있습니다.
+    description:
+      mode: warning
+    # 독스트링 커버리지 임계값은 이 저장소 규약(공개 API 에만)과 맞지 않습니다.
+    # 따옴표가 필요합니다 — YAML 이 맨몸 off 를 불리언 false 로 읽습니다.
+    docstrings:
+      mode: "off"
+
+knowledge_base:
+  # 이 저장소의 규범 문서를 리뷰 기준으로 씁니다. AGENTS.md 가 단일 규범이고
+  # 스킬에 절차가 있습니다 — 코딩 에이전트가 읽는 것과 같은 것을 읽게 합니다.
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - "CONTRIBUTING.md"
+      - ".claude/skills/**/SKILL.md"
+      - ".cursor/rules/*.mdc"
