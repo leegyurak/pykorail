@@ -30,7 +30,7 @@ import pytest
 
 TESTS_DIR = Path(__file__).parent
 ROOT = TESTS_DIR.parent
-TEST_FILES = sorted(TESTS_DIR.glob("test_*.py"))
+TEST_FILES = sorted(TESTS_DIR.rglob("test_*.py"))
 BANNED = (ast.If, ast.For, ast.While, ast.AsyncFor)
 
 # encoding 검사는 패키지 코드에도 걸립니다. _version.py 는 hatch-vcs 가 빌드 때
@@ -60,6 +60,14 @@ ENCODING_POSITION = {
     ("open", True): 2,
     ("read_text", True): 0,
     ("write_text", True): 1,
+}
+
+# 모드를 **위치 인자**로 받는 자리. read_text/write_text 는 모드 자체가 없어서
+# 여기 없습니다 — 없으면 위치 인자를 모드로 보지 않습니다. (`write_text("ab")` 의
+# 내용이 모드로 오인되면 미탐이 됩니다.)
+MODE_POSITION = {
+    ("open", False): 1,  # open(file, mode)
+    ("open", True): 0,  # Path(p).open(mode)
 }
 
 # 파일 모드 문자열에만 쓰이는 글자들. 파일 이름이 모드로 오인되는 것을 막습니다
@@ -95,11 +103,17 @@ def _is_binary(node: ast.Call) -> bool:
     """``open(p, "rb")`` 처럼 바이너리 모드면 encoding 을 줄 수 없습니다.
 
     모드가 몇 번째 위치 인자인지는 호출 형태에 따라 다릅니다 — ``open(p, "rb")`` 는
-    두 번째, ``Path(p).open("rb")`` 는 첫 번째입니다. 자리를 세는 대신 **모드처럼
-    생긴 문자열이 있는지** 봅니다. 여기서 놓치면 "바이너리인데 encoding 을 붙여라"
-    라고 시키게 되고, 그대로 따르면 :class:`ValueError` 로 죽습니다.
+    두 번째, ``Path(p).open("rb")`` 는 첫 번째, ``read_text``/``write_text`` 는
+    아예 없습니다. 여기서 놓치면 "바이너리인데 encoding 을 붙여라" 라고 시키게 되고,
+    그대로 따르면 :class:`ValueError` 로 죽습니다. 반대로 자리를 안 세고 아무 문자열
+    이나 보면 ``write_text("ab")`` 의 **내용**이 모드로 오인돼 미탐이 됩니다.
     """
-    positional = [arg.value for arg in node.args if isinstance(arg, ast.Constant)]
+    position = MODE_POSITION.get((_call_name(node), isinstance(node.func, ast.Attribute)))
+    positional = [
+        arg.value
+        for index, arg in enumerate(node.args)
+        if index == position and isinstance(arg, ast.Constant)  # position 이 None 이면 아무것도 안 걸립니다
+    ]
     keyword = [kw.value.value for kw in node.keywords if kw.arg == "mode" and isinstance(kw.value, ast.Constant)]
     modes = [value for value in positional + keyword if isinstance(value, str)]
     return any("b" in mode and set(mode) <= MODE_CHARS for mode in modes)
@@ -279,8 +293,10 @@ class TestCheckersActuallyWork:
             ("from pathlib import Path\n\nPath('x').read_text('utf-8')\n", []),
             ("from pathlib import Path\n\nPath('x').write_text('한글', 'utf-8')\n", []),
             ("open('x', 'w', -1, 'utf-8')\n", []),
-            # 파일 이름이 모드로 오인되면 안 됩니다.
+            # 파일 이름이나 쓰는 내용이 모드로 오인되면 안 됩니다.
             ("open('backup.txt')\n", ["s.py:1 open()"]),
+            ("from pathlib import Path\n\nPath('x').write_text('ab')\n", ["s.py:3 write_text()"]),
+            ("from pathlib import Path\n\nPath('x').read_text()\n", ["s.py:3 read_text()"]),
         ],
         # pytest 가 비 ASCII id 를 \uXXXX 로 이스케이프해 출력이 읽기 나빠집니다.
         ids=[
@@ -298,6 +314,8 @@ class TestCheckersActuallyWork:
             "write_text-positional-encoding",
             "open-positional-encoding",
             "filename-is-not-a-mode",
+            "write_text-content-is-not-a-mode",
+            "read_text-has-no-mode",
         ],
     )
     def test_encoding_checker(self, tmp_path: Path, source: str, expected: list[str]) -> None:
