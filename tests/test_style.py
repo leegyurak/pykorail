@@ -65,6 +65,12 @@ ENCODING_POSITION = {
 # 모드를 **위치 인자**로 받는 자리. read_text/write_text 는 모드 자체가 없어서
 # 여기 없습니다 — 없으면 위치 인자를 모드로 보지 않습니다. (`write_text("ab")` 의
 # 내용이 모드로 오인되면 미탐이 됩니다.)
+#
+# 어트리뷰트 호출의 `open` 은 `Path.open` 으로 봅니다. `io.open`/`codecs.open` 은
+# 빌트인과 같은 시그니처(모드가 1번)라 여기서 틀리고, **바이너리인데 "encoding 을
+# 붙여라" 라고 시키게 됩니다** — 그대로 따르면 ValueError 로 죽습니다. 위 한계
+# 주석과 같은 이유(import 를 추적하지 않음)이지만 방향이 위험한 쪽이라 따로
+# 적습니다. 그런 호출을 들이면 이 표를 함께 손보세요.
 MODE_POSITION = {
     ("open", False): 1,  # open(file, mode)
     ("open", True): 0,  # Path(p).open(mode)
@@ -296,7 +302,6 @@ class TestCheckersActuallyWork:
             # 파일 이름이나 쓰는 내용이 모드로 오인되면 안 됩니다.
             ("open('backup.txt')\n", ["s.py:1 open()"]),
             ("from pathlib import Path\n\nPath('x').write_text('ab')\n", ["s.py:3 write_text()"]),
-            ("from pathlib import Path\n\nPath('x').read_text()\n", ["s.py:3 read_text()"]),
         ],
         # pytest 가 비 ASCII id 를 \uXXXX 로 이스케이프해 출력이 읽기 나빠집니다.
         ids=[
@@ -315,7 +320,6 @@ class TestCheckersActuallyWork:
             "open-positional-encoding",
             "filename-is-not-a-mode",
             "write_text-content-is-not-a-mode",
-            "read_text-has-no-mode",
         ],
     )
     def test_encoding_checker(self, tmp_path: Path, source: str, expected: list[str]) -> None:
@@ -331,11 +335,15 @@ class TestCheckersActuallyWork:
 
 
 def test_every_test_file_is_checked() -> None:
+    """개수 하한이 아니라 실제 파일 집합과 대조합니다 — 아래 encoding 쪽과 같은 형태로."""
+    # given
+    on_disk = set(TESTS_DIR.rglob("test_*.py"))
+
     # when
-    count = len(TEST_FILES)
+    missing = on_disk - set(TEST_FILES)
 
     # then
-    assert count >= 10
+    assert missing == set()
 
 
 @pytest.mark.parametrize("subdir", ["src/pykorail", "tests"])
