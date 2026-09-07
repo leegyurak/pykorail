@@ -410,13 +410,14 @@ class TestNearbyStations:
 
     def test_does_not_disturb_the_rest_of_the_payload(self, korail) -> None:
         """이 플래그 하나만 달라져야 합니다 — 다른 필드가 흔들리면 로그인·조회가 막힙니다."""
-        # given
+        # given — 출발 시각을 고정합니다. 생략하면 호출마다 now() 를 다시 계산해서
+        # 초가 넘어가는 순간 txtGoHour 까지 달라집니다.
         client, session = korail
-        client.trains.search("서울", "부산")
+        client.trains.search("서울", "부산", depart_after=FUTURE)
         before = dict(session.kwargs_for("search_schedule")["params"])
 
         # when
-        client.trains.search("서울", "부산", include_nearby_stations=True)
+        client.trains.search("서울", "부산", depart_after=FUTURE, include_nearby_stations=True)
 
         # then
         after = dict(session.kwargs_for("search_schedule")["params"])
