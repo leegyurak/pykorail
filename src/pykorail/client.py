@@ -93,14 +93,15 @@ class Korail:
     ) -> Korail:
         """클라이언트를 만들고 곧바로 로그인합니다.
 
+        실패하면 연결을 닫고 예외를 다시 올립니다 — 로그인 못 한 클라이언트가
+        소켓만 붙든 채 돌아다니면 안 됩니다.
+
         Raises:
-            LoginFailedError: 자격증명이 없거나 암호화 키 발급이 실패했습니다.
-            KorailError: 서버가 로그인을 거부했습니다.
+            LoginFailedError: :meth:`login` 이 실패했습니다.
         """
         korail = cls(verbose=verbose, device_profile=device_profile, validate_stations=validate_stations)
         try:
-            if not korail.login(korail_id, korail_pw):
-                raise LoginFailedError("아이디 또는 비밀번호가 올바르지 않습니다")
+            korail.login(korail_id, korail_pw)
         except BaseException:
             korail.close()
             raise
@@ -159,17 +160,35 @@ class Korail:
         """
         payload = self._api.post(API_ENDPOINTS["code"], data={"code": "app.login.cphd"})
         cipher_info = payload.get("app.login.cphd")
-        if payload.get("strResult") != "SUCC" or not cipher_info:
-            raise LoginFailedError(code=payload.get("h_msg_cd"))
+        cipher = cipher_info if isinstance(cipher_info, dict) else {}
+        idx, key = cipher.get("idx"), cipher.get("key")
 
-        self._idx = cipher_info["idx"]
-        return encrypt_password(password, cipher_info["key"])
+        # ``strResult`` 가 SUCC 여도 idx·key 가 빠지거나 빈 값으로 올 수 있습니다.
+        # 날로 인덱싱하면 KeyError 가 그대로 새어 나가 "로그인 실패는 전부
+        # LoginFailedError" 라는 login() 의 계약이 깨집니다.
+        if payload.get("strResult") != "SUCC" or not idx or not key:
+            raise LoginFailedError("비밀번호 암호화 키를 발급받지 못했습니다", payload.get("h_msg_cd"))
 
-    def login(self, korail_id: str, korail_pw: str) -> bool:
-        """로그인합니다. 성공하면 ``True``, 자격증명이 틀리면 ``False``.
+        self._idx = idx
+        try:
+            return encrypt_password(password, key)
+        except (AttributeError, TypeError, ValueError) as exc:
+            # 키가 문자열이 아니거나 길이가 AES 규격(16·24·32바이트)에 안 맞는 경우.
+            # pycryptodome 의 예외를 날것으로 올리면 호출자가 잡을 타입이 없습니다.
+            raise LoginFailedError(f"발급받은 암호화 키를 쓸 수 없습니다: {exc}") from exc
+
+    def login(self, korail_id: str, korail_pw: str) -> None:
+        """로그인합니다. 실패는 전부 예외입니다 — 성공 여부를 반환하지 않습니다.
+
+        빈 자격증명·하이픈 없는 번호·암호화 키 발급 실패는 예외인데 비밀번호가
+        틀린 것만 ``False`` 를 돌려주던 시절이 있었습니다. 반환값을 확인하지 않은
+        호출자는 로그인하지 못한 채로 조회에 들어가 한참 뒤 엉뚱한 ``P058`` 을
+        보게 됩니다. 실패 경로를 하나로 모아 그 구멍을 없앱니다.
 
         Raises:
-            LoginFailedError: 아이디/비밀번호가 비었거나 암호화 키 발급이 실패했습니다.
+            LoginFailedError: 아이디/비밀번호가 비었거나, 휴대폰 번호 형식이
+                잘못됐거나, 암호화 키 발급이 실패했거나, 서버가 자격증명을
+                거부했습니다.
         """
         if not korail_id or not korail_pw:
             raise LoginFailedError("아이디와 비밀번호가 필요합니다")
@@ -215,10 +234,15 @@ class Korail:
             account.name = payload["strCustNm"]
             account.email = payload["strEmailAdr"]
             account.phone_number = payload["strCpNo"]
-            return True
+            return
 
         account.clear()
-        return False
+        # 서버가 준 이유를 그대로 전달합니다 — "비밀번호가 틀렸습니다" 와 "휴면
+        # 계정입니다" 는 사용자가 해야 할 일이 다른데, 하나로 뭉개면 알 길이 없습니다.
+        raise LoginFailedError(
+            payload.get("h_msg_txt") or "아이디 또는 비밀번호가 올바르지 않습니다",
+            payload.get("h_msg_cd"),
+        )
 
     def logout(self) -> None:
         """서버 로그인 세션을 끊습니다.
